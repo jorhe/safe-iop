@@ -17,20 +17,13 @@ TESTNAME = safe_iop_test
 CFLAGS   = -Wall -O2 -Iinclude
 SOURCES = src/safe_iop.c
 
-all: $(TESTNAME) $(TESTNAME)_speed
+all: $(TESTNAME)
 
 # This may be built as a library or directly included in source.
 # Unless support for safe_iopf is needed, header inclusion is enough.
 
-# Later, look at moving towards gcc 4.3 where they;ve fixed the
-# type-limit warnings. (-Wno-type-limits)
 $(TESTNAME): src/safe_iop.c include/safe_iop.h
 	$(CC) $(CFLAGS) -DNDEBUG=1 -DSAFE_IOP_TEST=1 $(SOURCES) -o $@
-
-$(TESTNAME)_speed: src/safe_iop.c include/safe_iop.h
-	$(CC) $(CFLAGS) -DSAFE_IOP_SPEED_TEST=1 -DNDEBUG=1 -DSAFE_IOP_TEST=1 $(SOURCES) -o $@
-
-
 
 askme: examples/askme.c include/safe_iop.h
 	$(CC) $(CFLAGS) examples/askme.c -o $@

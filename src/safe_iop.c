@@ -1,21 +1,14 @@
 /* safe_iop
+ * License:: released in to the public domain
  * Author:: Will Drewry <redpig@dataspill.org>
+ * Copyright 2007,2008 redpig@dataspill.org
+ * Some portions copyright Google Inc, 2008.
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS
+ * OF ANY KIND, either express or implied.
+ *
  * See safe_iop.h for more info.
- *
- * Copyright (c) 2007,2008 Will Drewry <redpig@dataspill.org>
- * Some portions contributed by Google Inc., 2008.
- *
- * Permission to use, copy, modify, and distribute this software for any
- * purpose with or without fee is hereby granted, provided that the above
- * copyright notice and this permission notice appear in all copies.
- *
- * THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES
- * WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF
- * MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR
- * ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES
- * WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN
- * ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
- * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  */
 #include <stdint.h>
 #include <stdarg.h>
@@ -38,38 +31,16 @@ static int _safe_op_read_type(safe_type_t *type, const char **c) {
   if (strchr(SAFE_IOP_TYPE_PREFIXES, **c) != NULL) {
     switch(**c) {
       case 'u':
-        if (*(*c+1) && *(*c+1) == '8') {
-          *type = SAFE_IOP_TYPE_U8;
-          *c += 2; /* Advance past type */
-        } else if ((*(*c+1) && *(*c+1) == '1') &&
-                   (*(*c+2) && *(*c+2) == '6')) {
-          *type = SAFE_IOP_TYPE_U16;
-          *c += 3; /* Advance past type */
-        } else if ((*(*c+1) && *(*c+1) == '3') &&
-                   (*(*c+2) && *(*c+2) == '2')) {
+        if ((*(*c+1) && *(*c+1) == '3') &&
+            (*(*c+2) && *(*c+2) == '2')) {
           *type = SAFE_IOP_TYPE_U32;
-          *c += 3; /* Advance past type */
-        } else if ((*(*c+1) && *(*c+1) == '6') &&
-                   (*(*c+2) && *(*c+2) == '4')) {
-          *type = SAFE_IOP_TYPE_U64;
           *c += 3; /* Advance past type */
         }
         break;
       case 's':
-        if (*(*c+1) && *(*c+1) == '8') {
-          *type = SAFE_IOP_TYPE_S8;
-          *c += 2; /* Advance past type */
-        } else if ((*(*c+1) && *(*c+1) == '1') &&
-                   (*(*c+2) && *(*c+2) == '6')) {
-          *type = SAFE_IOP_TYPE_S16;
-          *c += 3; /* Advance past type */
-        } else if ((*(*c+1) && *(*c+1) == '3') &&
-                   (*(*c+2) && *(*c+2) == '2')) {
+        if ((*(*c+1) && *(*c+1) == '3') &&
+            (*(*c+2) && *(*c+2) == '2')) {
           *type = SAFE_IOP_TYPE_S32;
-          *c += 3; /* Advance past type */
-        } else if ((*(*c+1) && *(*c+1) == '6') &&
-                   (*(*c+2) && *(*c+2) == '4')) {
-          *type = SAFE_IOP_TYPE_S64;
           *c += 3; /* Advance past type */
         }
         break;
@@ -81,83 +52,23 @@ static int _safe_op_read_type(safe_type_t *type, const char **c) {
   return 1;
 }
 
-/* XXX: Due to stdarg's implementation, all values smaller than int are cast
- *      up to it. (I can only assume for easy alignment.)
- *      Need to cross-check to see if unsafe casts can occur.
- *      ADD TESTS!
- */
-#define _SAFE_IOP_TYPE_CASE(_lhs, _va_lhs, _rhs, _va_rhs, _func) { \
-  _rhs a; \
-  _lhs value; \
+#define _SAFE_IOP_TYPE_CASE(_type, _func) { \
+  _type a = va_arg(ap, _type), value = *((_type *) result); \
   if (!baseline) { \
-    value = (_lhs) va_arg(ap, _va_lhs); \
-    a = (_rhs) va_arg(ap, _va_rhs); \
+    value = a; \
+    a = va_arg(ap, _type); \
     baseline = 1; \
-  } else { \
-    value = *((_lhs *) result);\
-    a = (_rhs) va_arg(ap, _va_rhs); \
   } \
-  if (! _func( ((_lhs *) result), value, a)) \
+  if (! _func( (_type *) result, value, a)) \
     return 0; \
 }
-
-#define _SAFE_IOP_OP_CASE_RHS(_LHS, _VA_LHS, _FUNC) \
-  switch (rhs) { \
-    case SAFE_IOP_TYPE_U8: \
-      _SAFE_IOP_TYPE_CASE(_LHS, _VA_LHS, unsigned char, unsigned int, _FUNC); \
-      break; \
-    case SAFE_IOP_TYPE_S8: \
-      _SAFE_IOP_TYPE_CASE(_LHS, _VA_LHS, signed char, signed int, _FUNC); \
-      break; \
-    case SAFE_IOP_TYPE_U16: \
-      _SAFE_IOP_TYPE_CASE(_LHS, _VA_LHS, uint16_t, unsigned int, _FUNC); \
-      break; \
-    case SAFE_IOP_TYPE_S16: \
-      _SAFE_IOP_TYPE_CASE(_LHS, _VA_LHS, int16_t, signed int, _FUNC); \
-      break; \
+#define _SAFE_IOP_OP_CASE(u32func, s32func) \
+  switch (type) { \
     case SAFE_IOP_TYPE_U32: \
-      _SAFE_IOP_TYPE_CASE(_LHS, _VA_LHS, uint32_t, uint32_t, _FUNC); \
+      _SAFE_IOP_TYPE_CASE(u_int32_t, u32func); \
       break; \
     case SAFE_IOP_TYPE_S32: \
-      _SAFE_IOP_TYPE_CASE(_LHS, _VA_LHS, int32_t, int32_t, _FUNC); \
-      break; \
-    case SAFE_IOP_TYPE_U64: \
-      _SAFE_IOP_TYPE_CASE(_LHS, _VA_LHS, uint64_t, uint64_t, _FUNC); \
-      break; \
-    case SAFE_IOP_TYPE_S64: \
-      _SAFE_IOP_TYPE_CASE(_LHS, _VA_LHS, int64_t, int64_t, _FUNC); \
-      break; \
-    default: \
-      return 0; \
-  }
-
-
-
-#define _SAFE_IOP_OP_CASE_LHS(_FUNC) \
-  switch (lhs) { \
-    case SAFE_IOP_TYPE_U8: \
-      _SAFE_IOP_OP_CASE_RHS(unsigned char, unsigned int, _FUNC); \
-      break; \
-    case SAFE_IOP_TYPE_S8: \
-      _SAFE_IOP_OP_CASE_RHS(signed char, signed int, _FUNC); \
-      break; \
-    case SAFE_IOP_TYPE_U16: \
-      _SAFE_IOP_OP_CASE_RHS(uint16_t, unsigned int, _FUNC); \
-      break; \
-    case SAFE_IOP_TYPE_S16: \
-      _SAFE_IOP_OP_CASE_RHS(int16_t, signed int, _FUNC); \
-      break; \
-    case SAFE_IOP_TYPE_U32: \
-      _SAFE_IOP_OP_CASE_RHS(uint32_t, uint32_t, _FUNC); \
-      break; \
-    case SAFE_IOP_TYPE_S32: \
-      _SAFE_IOP_OP_CASE_RHS(int32_t, int32_t, _FUNC); \
-      break; \
-    case SAFE_IOP_TYPE_U64: \
-      _SAFE_IOP_OP_CASE_RHS(uint64_t, uint64_t, _FUNC); \
-      break; \
-    case SAFE_IOP_TYPE_S64: \
-      _SAFE_IOP_OP_CASE_RHS(int64_t, int64_t, _FUNC); \
+      _SAFE_IOP_TYPE_CASE(int32_t, s32func); \
       break; \
     default: \
       return 0; \
@@ -168,7 +79,7 @@ int safe_iopf(void *result, const char *const fmt, ...) {
   int baseline = 0; /* indicates if the base value is present */
 
   const char *c = NULL;
-  safe_type_t lhs = SAFE_IOP_TYPE_DEFAULT, rhs = SAFE_IOP_TYPE_DEFAULT;
+  safe_type_t type = SAFE_IOP_TYPE_DEFAULT;
   /* Result should not be NULL */
   if (!result)
     return 0;
@@ -176,68 +87,35 @@ int safe_iopf(void *result, const char *const fmt, ...) {
   va_start(ap, fmt);
   if (fmt == NULL || fmt[0] == '\0')
     return 0;
-  for(c=fmt;(*c);) {
-    /* Read the left-hand side type for the operation type if given */
-    if (!_safe_op_read_type(&lhs, &c)) {
+  for(c=fmt;(*c);c++) {
+    /* Read the type if specified */
+    if (!_safe_op_read_type(&type, &c)) {
       return 0;
     }
 
     /* Process the the operations */
-    switch(*(c++)) { /* operation */
+    switch(*c) { /* operation */
       case '+': /* add */
-        /* Read the right-hand side type for the operation type if given */
-        if (!_safe_op_read_type(&rhs, &c))
-          return 0;
-          _SAFE_IOP_OP_CASE_LHS(safe_add);
+        _SAFE_IOP_OP_CASE(safe_uadd, safe_sadd);
         break;
       case '-': /* sub */
-        if (!_safe_op_read_type(&rhs, &c))
-          return 0;
-        _SAFE_IOP_OP_CASE_LHS(safe_sub);
+        _SAFE_IOP_OP_CASE(safe_usub, safe_ssub);
         break;
       case '*': /* mul */
-        if (!_safe_op_read_type(&rhs, &c))
-          return 0;
-        _SAFE_IOP_OP_CASE_LHS(safe_mul);
+        _SAFE_IOP_OP_CASE(safe_umul, safe_smul);
         break;
       case '/': /* div */
-        if (!_safe_op_read_type(&rhs, &c))
-          return 0;
-        _SAFE_IOP_OP_CASE_LHS(safe_div);
+        _SAFE_IOP_OP_CASE(safe_udiv, safe_sdiv);
         break;
       case '%': /* mod */
-        if (!_safe_op_read_type(&rhs, &c))
-          return 0;
-        _SAFE_IOP_OP_CASE_LHS(safe_mod);
-        break;
-      case '<': /* shl */
-        if (*c && *c == '<') {
-          c++;
-          if (!_safe_op_read_type(&rhs, &c))
-            return 0;
-          _SAFE_IOP_OP_CASE_LHS(safe_shl);
-        } else {
-          /* unknown op */
-          return 0;
-        }
-        break;
-      case '>': /* shr */
-        if (*c && *c == '>') {
-          c++;
-          if (!_safe_op_read_type(&rhs, &c))
-            return 0;
-          _SAFE_IOP_OP_CASE_LHS(safe_shr);
-        } else {
-          /* unknown op */
-          return 0;
-        }
+        _SAFE_IOP_OP_CASE(safe_umod, safe_smod);
         break;
       default:
        /* unknown op */
        return 0;
     }
     /* Reset the type */
-   lhs = SAFE_IOP_TYPE_DEFAULT, rhs = SAFE_IOP_TYPE_DEFAULT;
+   type = SAFE_IOP_TYPE_DEFAULT;
   }
   /* Success! */
   return 1;
@@ -247,7 +125,6 @@ int safe_iopf(void *result, const char *const fmt, ...) {
 #include <stdio.h>
 #include <stdint.h>
 #include <limits.h>
-#include <stdlib.h>
 
 /* __LP64__ is given by GCC. Without more work, this is bound to GCC. */
 #if __LP64__ == 1 || __SIZEOF_LONG__ > __SIZEOF_INT__
@@ -306,12 +183,8 @@ int T_add_s8() {
   int8_t a, b;
   a=SCHAR_MIN; b=-1; EXPECT_FALSE(safe_add(NULL, a, b));
   a=SCHAR_MAX; b=1; EXPECT_FALSE(safe_add(NULL, a, b));
-  a=SCHAR_MAX; EXPECT_FALSE(safe_inc(&a));
-  a=0; EXPECT_TRUE(safe_inc(&a)); EXPECT_TRUE(a==1);
   a=10; b=11; EXPECT_TRUE(safe_add(NULL, a, b));
   a=-10; b=-11; EXPECT_TRUE(safe_add(NULL, a, b));
-  a=10; b=-11; EXPECT_TRUE(safe_add(NULL, a, b));
-  a=-10; b=11; EXPECT_TRUE(safe_add(NULL, a, b));
   a=SCHAR_MIN; b=SCHAR_MAX; EXPECT_TRUE(safe_add(NULL, a, b));
   a=SCHAR_MIN+1; b=-1; EXPECT_TRUE(safe_add(NULL, a, b));
   a=SCHAR_MAX/2; b=SCHAR_MAX/2; EXPECT_TRUE(safe_add(NULL, a, b));
@@ -323,13 +196,8 @@ int T_add_s16() {
   int16_t a, b;
   a=SHRT_MIN; b=-1; EXPECT_FALSE(safe_add(NULL, a, b));
   a=SHRT_MAX; b=1; EXPECT_FALSE(safe_add(NULL, a, b));
-  a=SHRT_MAX; EXPECT_FALSE(safe_inc(&a));
   a=10; b=11; EXPECT_TRUE(safe_add(NULL, a, b));
-  a=-10; b=-11; EXPECT_TRUE(safe_add(NULL, a, b));
-  a=10; b=-11; EXPECT_TRUE(safe_add(NULL, a, b));
-  a=-10; b=11; EXPECT_TRUE(safe_add(NULL, a, b));
   a=SHRT_MIN; b=SHRT_MAX; EXPECT_TRUE(safe_add(NULL, a, b));
-  a=SHRT_MIN+1; b=-1; EXPECT_TRUE(safe_add(NULL, a, b));
   a=SHRT_MAX/2; b=SHRT_MAX/2; EXPECT_TRUE(safe_add(NULL, a, b));
   return r;
 }
@@ -339,13 +207,8 @@ int T_add_s32() {
   int32_t a, b;
   a=INT_MIN; b=-1; EXPECT_FALSE(safe_add(NULL, a, b));
   a=INT_MAX; b=1; EXPECT_FALSE(safe_add(NULL, a, b));
-  a=INT_MAX; EXPECT_FALSE(safe_inc(&a));
   a=10; b=11; EXPECT_TRUE(safe_add(NULL, a, b));
-  a=-10; b=-11; EXPECT_TRUE(safe_add(NULL, a, b));
-  a=10; b=-11; EXPECT_TRUE(safe_add(NULL, a, b));
-  a=-10; b=11; EXPECT_TRUE(safe_add(NULL, a, b));
   a=INT_MIN; b=INT_MAX; EXPECT_TRUE(safe_add(NULL, a, b));
-  a=INT_MIN+1; b=-1; EXPECT_TRUE(safe_add(NULL, a, b));
   a=INT_MAX/2; b=INT_MAX/2; EXPECT_TRUE(safe_add(NULL, a, b));
   return r;
 }
@@ -355,13 +218,8 @@ int T_add_s64() {
   int64_t a, b;
   a=SAFE_INT64_MIN; b=-1; EXPECT_FALSE(safe_add(NULL, a, b));
   a=SAFE_INT64_MAX; b=1; EXPECT_FALSE(safe_add(NULL, a, b));
-  a=SAFE_INT64_MAX; EXPECT_FALSE(safe_inc(&a));
   a=10; b=11; EXPECT_TRUE(safe_add(NULL, a, b));
-  a=-10; b=-11; EXPECT_TRUE(safe_add(NULL, a, b));
-  a=10; b=-11; EXPECT_TRUE(safe_add(NULL, a, b));
-  a=-10; b=11; EXPECT_TRUE(safe_add(NULL, a, b));
   a=SAFE_INT64_MIN; b=SAFE_INT64_MAX; EXPECT_TRUE(safe_add(NULL, a, b));
-  a=SAFE_INT64_MIN+1; b=-1; EXPECT_TRUE(safe_add(NULL, a, b));
   a=SAFE_INT64_MAX/2; b=SAFE_INT64_MAX/2; EXPECT_TRUE(safe_add(NULL, a, b));
   return r;
 }
@@ -371,13 +229,8 @@ int T_add_long() {
   long a, b;
   a=LONG_MIN; b=-1; EXPECT_FALSE(safe_add(NULL, a, b));
   a=LONG_MAX; b=1; EXPECT_FALSE(safe_add(NULL, a, b));
-  a=LONG_MAX; EXPECT_FALSE(safe_inc(&a));
   a=10; b=11; EXPECT_TRUE(safe_add(NULL, a, b));
-  a=-10; b=-11; EXPECT_TRUE(safe_add(NULL, a, b));
-  a=10; b=-11; EXPECT_TRUE(safe_add(NULL, a, b));
-  a=-10; b=11; EXPECT_TRUE(safe_add(NULL, a, b));
   a=LONG_MIN; b=LONG_MAX; EXPECT_TRUE(safe_add(NULL, a, b));
-  a=LONG_MIN+1; b=-1; EXPECT_TRUE(safe_add(NULL, a, b));
   a=LONG_MAX/2; b=LONG_MAX/2; EXPECT_TRUE(safe_add(NULL, a, b));
   return r;
 }
@@ -386,13 +239,8 @@ int T_add_longlong() {
   long long a, b;
   a=LLONG_MIN; b=-1; EXPECT_FALSE(safe_add(NULL, a, b));
   a=LLONG_MAX; b=1; EXPECT_FALSE(safe_add(NULL, a, b));
-  a=LLONG_MAX; EXPECT_FALSE(safe_inc(&a));
   a=10; b=11; EXPECT_TRUE(safe_add(NULL, a, b));
-  a=-10; b=-11; EXPECT_TRUE(safe_add(NULL, a, b));
-  a=10; b=-11; EXPECT_TRUE(safe_add(NULL, a, b));
-  a=-10; b=11; EXPECT_TRUE(safe_add(NULL, a, b));
   a=LLONG_MIN; b=LLONG_MAX; EXPECT_TRUE(safe_add(NULL, a, b));
-  a=LLONG_MIN+1; b=-1; EXPECT_TRUE(safe_add(NULL, a, b));
   a=LLONG_MAX/2; b=LLONG_MAX/2; EXPECT_TRUE(safe_add(NULL, a, b));
   return r;
 }
@@ -401,13 +249,8 @@ int T_add_ssizet() {
   ssize_t a, b;
   a=SSIZE_MIN; b=-1; EXPECT_FALSE(safe_add(NULL, a, b));
   a=SSIZE_MAX; b=1; EXPECT_FALSE(safe_add(NULL, a, b));
-  a=SSIZE_MAX; EXPECT_FALSE(safe_inc(&a));
   a=10; b=11; EXPECT_TRUE(safe_add(NULL, a, b));
-  a=-10; b=-11; EXPECT_TRUE(safe_add(NULL, a, b));
-  a=10; b=-11; EXPECT_TRUE(safe_add(NULL, a, b));
-  a=-10; b=11; EXPECT_TRUE(safe_add(NULL, a, b));
   a=SSIZE_MIN; b=SSIZE_MAX; EXPECT_TRUE(safe_add(NULL, a, b));
-  a=SSIZE_MIN+1; b=-1; EXPECT_TRUE(safe_add(NULL, a, b));
   a=SSIZE_MAX/2; b=SSIZE_MAX/2; EXPECT_TRUE(safe_add(NULL, a, b));
   return r;
 }
@@ -416,7 +259,6 @@ int T_add_u8() {
   int r=1;
   uint8_t a, b;
   a=1; b=UCHAR_MAX; EXPECT_FALSE(safe_add(NULL, a, b));
-  a=UCHAR_MAX; EXPECT_FALSE(safe_inc(&a));
   a=UCHAR_MAX/2; b=a+2; EXPECT_FALSE(safe_add(NULL, a, b));
   a=UCHAR_MAX/2; b=a; EXPECT_TRUE(safe_add(NULL, a, b));
   a=UCHAR_MAX/2; b=a+1; EXPECT_TRUE(safe_add(NULL, a, b));
@@ -429,7 +271,6 @@ int T_add_u16() {
   int r=1;
   uint16_t a, b;
   a=1; b=USHRT_MAX; EXPECT_FALSE(safe_add(NULL, a, b));
-  a=USHRT_MAX; EXPECT_FALSE(safe_inc(&a));
   a=USHRT_MAX/2; b=a+2; EXPECT_FALSE(safe_add(NULL, a, b));
   a=USHRT_MAX/2; b=a; EXPECT_TRUE(safe_add(NULL, a, b));
   a=USHRT_MAX/2; b=a+1; EXPECT_TRUE(safe_add(NULL, a, b));
@@ -442,7 +283,6 @@ int T_add_u32() {
   int r=1;
   uint32_t a, b;
   a=1; b=UINT_MAX; EXPECT_FALSE(safe_add(NULL, a, b));
-  a=UINT_MAX; EXPECT_FALSE(safe_inc(&a));
   a=UINT_MAX/2; b=a+2; EXPECT_FALSE(safe_add(NULL, a, b));
   a=UINT_MAX/2; b=a; EXPECT_TRUE(safe_add(NULL, a, b));
   a=UINT_MAX/2; b=a+1; EXPECT_TRUE(safe_add(NULL, a, b));
@@ -455,7 +295,6 @@ int T_add_u64() {
   int r=1;
   uint64_t a, b;
   a=1; b=SAFE_UINT64_MAX; EXPECT_FALSE(safe_add(NULL, a, b));
-  a=SAFE_UINT64_MAX; EXPECT_FALSE(safe_inc(&a));
   a=SAFE_UINT64_MAX/2; b=a+2; EXPECT_FALSE(safe_add(NULL, a, b));
   a=SAFE_UINT64_MAX/2; b=a; EXPECT_TRUE(safe_add(NULL, a, b));
   a=SAFE_UINT64_MAX/2; b=a+1; EXPECT_TRUE(safe_add(NULL, a, b));
@@ -468,7 +307,6 @@ int T_add_ulong() {
   int r=1;
   unsigned long a, b;
   a=1; b=ULONG_MAX; EXPECT_FALSE(safe_add(NULL, a, b));
-  a=ULONG_MAX; EXPECT_FALSE(safe_inc(&a));
   a=ULONG_MAX/2; b=a+2; EXPECT_FALSE(safe_add(NULL, a, b));
   a=ULONG_MAX/2; b=a; EXPECT_TRUE(safe_add(NULL, a, b));
   a=ULONG_MAX/2; b=a+1; EXPECT_TRUE(safe_add(NULL, a, b));
@@ -481,7 +319,6 @@ int T_add_ulonglong() {
   int r=1;
   unsigned long long a, b;
   a=1; b=ULLONG_MAX; EXPECT_FALSE(safe_add(NULL, a, b));
-  a=ULLONG_MAX; EXPECT_FALSE(safe_inc(&a));
   a=ULLONG_MAX/2; b=a+2; EXPECT_FALSE(safe_add(NULL, a, b));
   a=ULLONG_MAX/2; b=a; EXPECT_TRUE(safe_add(NULL, a, b));
   a=ULLONG_MAX/2; b=a+1; EXPECT_TRUE(safe_add(NULL, a, b));
@@ -494,7 +331,6 @@ int T_add_sizet() {
   int r=1;
   size_t a, b;
   a=1; b=SIZE_MAX; EXPECT_FALSE(safe_add(NULL, a, b));
-  a=SIZE_MAX; EXPECT_FALSE(safe_inc(&a));
   a=SIZE_MAX/2; b=a+2; EXPECT_FALSE(safe_add(NULL, a, b));
   a=SIZE_MAX/2; b=a; EXPECT_TRUE(safe_add(NULL, a, b));
   a=SIZE_MAX/2; b=a+1; EXPECT_TRUE(safe_add(NULL, a, b));
@@ -508,17 +344,10 @@ int T_add_mixed() {
   int8_t a = 1;
   uint8_t b = 2;
   uint16_t c = 3;
-  a=1; b=SCHAR_MAX; EXPECT_FALSE(safe_add(NULL, a, b));
-  a=0; b=SCHAR_MAX+1; EXPECT_FALSE(safe_add(NULL, a, b));
-  a=1; b=SCHAR_MAX-1; EXPECT_TRUE(safe_add(NULL, a, b));
-  b=1; c=UCHAR_MAX; EXPECT_FALSE(safe_add(NULL, b, c));
-  b=0; c=UCHAR_MAX+1; EXPECT_FALSE(safe_add(NULL, b, c));
-  b=1; c=UCHAR_MAX-1; EXPECT_TRUE(safe_add(NULL, b, c));
-  b=1; c=UCHAR_MAX-1; EXPECT_TRUE(safe_add(NULL, c, b));
-  a=1; c=USHRT_MAX; EXPECT_FALSE(safe_add(NULL, a, c));
-  a=1;b=1;c=USHRT_MAX-3; EXPECT_FALSE(safe_add3(NULL, a, b, c));
-  a=1;b=1;c=1; EXPECT_TRUE(safe_add3(NULL, a, b, c));
-  a=1;b=1;c=SCHAR_MAX-3; EXPECT_TRUE(safe_add3(NULL, a, b, c));
+  EXPECT_FALSE(safe_add(NULL, a, b));
+  EXPECT_FALSE(safe_add(NULL, b, c));
+  EXPECT_FALSE(safe_add(NULL, a, c));
+  EXPECT_FALSE(safe_add3(NULL, a, b, c));
   return r;
 }
 
@@ -537,13 +366,6 @@ int T_add_increment() {
   EXPECT_TRUE(a == 2);
   EXPECT_TRUE(b == 3);
   EXPECT_TRUE(c == 1);
-  a = 1; b = 2; cur=d;d[0] = 0;
-  EXPECT_TRUE(safe_add(cur++, a++, b++));
-  EXPECT_TRUE(d[0] == 3);
-  EXPECT_TRUE(cur == &d[1]);
-  EXPECT_TRUE(a == 2);
-  EXPECT_TRUE(b == 3);
-
   return r;
 }
 
@@ -554,17 +376,12 @@ int T_sub_s8() {
   int r=1;
   int8_t a, b;
   a=SCHAR_MIN; b=1; EXPECT_FALSE(safe_sub(NULL, a, b));
-  a=SCHAR_MIN; EXPECT_FALSE(safe_dec(&a));
-  a=1; EXPECT_TRUE(safe_dec(&a)); EXPECT_TRUE(a==0);
   a=SCHAR_MIN; b=SCHAR_MAX; EXPECT_FALSE(safe_sub(NULL, a, b));
   a=SCHAR_MIN/2; b=SCHAR_MAX; EXPECT_FALSE(safe_sub(NULL, a, b));
   a=-2; b=SCHAR_MAX; EXPECT_FALSE(safe_sub(NULL, a, b));
   a=SCHAR_MAX; b=SCHAR_MAX; EXPECT_TRUE(safe_sub(NULL, a, b));
   a=10; b=2; EXPECT_TRUE(safe_sub(NULL, a, b));
   a=2; b=10; EXPECT_TRUE(safe_sub(NULL, a, b));
-  a=-2; b=-10; EXPECT_TRUE(safe_sub(NULL, a, b));
-  a=2; b=-10; EXPECT_TRUE(safe_sub(NULL, a, b));
-  a=-2; b=10; EXPECT_TRUE(safe_sub(NULL, a, b));
   return r;
 }
 
@@ -572,16 +389,12 @@ int T_sub_s16() {
   int r=1;
   int16_t a, b;
   a=SHRT_MIN; b=1; EXPECT_FALSE(safe_sub(NULL, a, b));
-  a=SHRT_MIN; EXPECT_FALSE(safe_dec(&a));
   a=SHRT_MIN; b=SHRT_MAX; EXPECT_FALSE(safe_sub(NULL, a, b));
   a=SHRT_MIN/2; b=SHRT_MAX; EXPECT_FALSE(safe_sub(NULL, a, b));
   a=-2; b=SHRT_MAX; EXPECT_FALSE(safe_sub(NULL, a, b));
   a=SHRT_MAX; b=SHRT_MAX; EXPECT_TRUE(safe_sub(NULL, a, b));
   a=10; b=2; EXPECT_TRUE(safe_sub(NULL, a, b));
   a=2; b=10; EXPECT_TRUE(safe_sub(NULL, a, b));
-  a=-2; b=-10; EXPECT_TRUE(safe_sub(NULL, a, b));
-  a=2; b=-10; EXPECT_TRUE(safe_sub(NULL, a, b));
-  a=-2; b=10; EXPECT_TRUE(safe_sub(NULL, a, b));
   return r;
 }
 
@@ -589,16 +402,12 @@ int T_sub_s32() {
   int r=1;
   int32_t a, b;
   a=INT_MIN; b=1; EXPECT_FALSE(safe_sub(NULL, a, b));
-  a=INT_MIN; EXPECT_FALSE(safe_dec(&a));
   a=INT_MIN; b=INT_MAX; EXPECT_FALSE(safe_sub(NULL, a, b));
   a=INT_MIN/2; b=INT_MAX; EXPECT_FALSE(safe_sub(NULL, a, b));
   a=-2; b=INT_MAX; EXPECT_FALSE(safe_sub(NULL, a, b));
   a=INT_MAX; b=INT_MAX; EXPECT_TRUE(safe_sub(NULL, a, b));
   a=10; b=2; EXPECT_TRUE(safe_sub(NULL, a, b));
   a=2; b=10; EXPECT_TRUE(safe_sub(NULL, a, b));
-  a=-2; b=-10; EXPECT_TRUE(safe_sub(NULL, a, b));
-  a=2; b=-10; EXPECT_TRUE(safe_sub(NULL, a, b));
-  a=-2; b=10; EXPECT_TRUE(safe_sub(NULL, a, b));
   return r;
 }
 
@@ -606,16 +415,12 @@ int T_sub_s64() {
   int r=1;
   int64_t a, b;
   a=SAFE_INT64_MIN; b=1; EXPECT_FALSE(safe_sub(NULL, a, b));
-  a=SAFE_INT64_MIN; EXPECT_FALSE(safe_dec(&a));
   a=SAFE_INT64_MIN; b=SAFE_INT64_MAX; EXPECT_FALSE(safe_sub(NULL, a, b));
   a=SAFE_INT64_MIN/2; b=SAFE_INT64_MAX; EXPECT_FALSE(safe_sub(NULL, a, b));
   a=-2; b=SAFE_INT64_MAX; EXPECT_FALSE(safe_sub(NULL, a, b));
   a=SAFE_INT64_MAX; b=SAFE_INT64_MAX; EXPECT_TRUE(safe_sub(NULL, a, b));
   a=10; b=2; EXPECT_TRUE(safe_sub(NULL, a, b));
   a=2; b=10; EXPECT_TRUE(safe_sub(NULL, a, b));
-  a=-2; b=-10; EXPECT_TRUE(safe_sub(NULL, a, b));
-  a=2; b=-10; EXPECT_TRUE(safe_sub(NULL, a, b));
-  a=-2; b=10; EXPECT_TRUE(safe_sub(NULL, a, b));
   return r;
 }
 
@@ -623,16 +428,12 @@ int T_sub_long() {
   int r=1;
   long a, b;
   a=LONG_MIN; b=1; EXPECT_FALSE(safe_sub(NULL, a, b));
-  a=LONG_MIN; EXPECT_FALSE(safe_dec(&a));
   a=LONG_MIN; b=LONG_MAX; EXPECT_FALSE(safe_sub(NULL, a, b));
   a=LONG_MIN/2; b=LONG_MAX; EXPECT_FALSE(safe_sub(NULL, a, b));
   a=-2; b=LONG_MAX; EXPECT_FALSE(safe_sub(NULL, a, b));
   a=LONG_MAX; b=LONG_MAX; EXPECT_TRUE(safe_sub(NULL, a, b));
   a=10; b=2; EXPECT_TRUE(safe_sub(NULL, a, b));
   a=2; b=10; EXPECT_TRUE(safe_sub(NULL, a, b));
-  a=-2; b=-10; EXPECT_TRUE(safe_sub(NULL, a, b));
-  a=2; b=-10; EXPECT_TRUE(safe_sub(NULL, a, b));
-  a=-2; b=10; EXPECT_TRUE(safe_sub(NULL, a, b));
   return r;
 }
 
@@ -640,16 +441,12 @@ int T_sub_longlong() {
   int r=1;
   long long a, b;
   a=LLONG_MIN; b=1; EXPECT_FALSE(safe_sub(NULL, a, b));
-  a=LLONG_MIN; EXPECT_FALSE(safe_dec(&a));
   a=LLONG_MIN; b=LLONG_MAX; EXPECT_FALSE(safe_sub(NULL, a, b));
   a=LLONG_MIN/2; b=LLONG_MAX; EXPECT_FALSE(safe_sub(NULL, a, b));
   a=-2; b=LLONG_MAX; EXPECT_FALSE(safe_sub(NULL, a, b));
   a=LLONG_MAX; b=LLONG_MAX; EXPECT_TRUE(safe_sub(NULL, a, b));
   a=10; b=2; EXPECT_TRUE(safe_sub(NULL, a, b));
   a=2; b=10; EXPECT_TRUE(safe_sub(NULL, a, b));
-  a=-2; b=-10; EXPECT_TRUE(safe_sub(NULL, a, b));
-  a=2; b=-10; EXPECT_TRUE(safe_sub(NULL, a, b));
-  a=-2; b=10; EXPECT_TRUE(safe_sub(NULL, a, b));
   return r;
 }
 
@@ -657,16 +454,12 @@ int T_sub_ssizet() {
   int r=1;
   ssize_t a, b;
   a=SSIZE_MIN; b=1; EXPECT_FALSE(safe_sub(NULL, a, b));
-  a=SSIZE_MIN; EXPECT_FALSE(safe_dec(&a));
   a=SSIZE_MIN; b=SSIZE_MAX; EXPECT_FALSE(safe_sub(NULL, a, b));
   a=SSIZE_MIN/2; b=SSIZE_MAX; EXPECT_FALSE(safe_sub(NULL, a, b));
   a=-2; b=SSIZE_MAX; EXPECT_FALSE(safe_sub(NULL, a, b));
   a=SSIZE_MAX; b=SSIZE_MAX; EXPECT_TRUE(safe_sub(NULL, a, b));
   a=10; b=2; EXPECT_TRUE(safe_sub(NULL, a, b));
   a=2; b=10; EXPECT_TRUE(safe_sub(NULL, a, b));
-  a=-2; b=-10; EXPECT_TRUE(safe_sub(NULL, a, b));
-  a=2; b=-10; EXPECT_TRUE(safe_sub(NULL, a, b));
-  a=-2; b=10; EXPECT_TRUE(safe_sub(NULL, a, b));
   return r;
 }
 
@@ -674,7 +467,6 @@ int T_sub_u8() {
   int r=1;
   uint8_t a, b;
   a=0; b=UCHAR_MAX; EXPECT_FALSE(safe_sub(NULL, a, b));
-  a=0; EXPECT_FALSE(safe_dec(&a));
   a=UCHAR_MAX-1; b=UCHAR_MAX; EXPECT_FALSE(safe_sub(NULL, a, b));
   a=UCHAR_MAX; b=UCHAR_MAX; EXPECT_TRUE(safe_sub(NULL, a, b));
   a=1; b=100; EXPECT_FALSE(safe_sub(NULL, a, b));
@@ -688,7 +480,6 @@ int T_sub_u16() {
   int r=1;
   uint16_t a, b;
   a=0; b=USHRT_MAX; EXPECT_FALSE(safe_sub(NULL, a, b));
-  a=0; EXPECT_FALSE(safe_dec(&a));
   a=USHRT_MAX-1; b=USHRT_MAX; EXPECT_FALSE(safe_sub(NULL, a, b));
   a=USHRT_MAX; b=USHRT_MAX; EXPECT_TRUE(safe_sub(NULL, a, b));
   a=1; b=100; EXPECT_FALSE(safe_sub(NULL, a, b));
@@ -702,7 +493,6 @@ int T_sub_u32() {
   int r=1;
   uint32_t a, b;
   a=UINT_MAX-1; b=UINT_MAX; EXPECT_FALSE(safe_sub(NULL, a, b));
-  a=0; EXPECT_FALSE(safe_dec(&a));
   a=UINT_MAX; b=UINT_MAX; EXPECT_TRUE(safe_sub(NULL, a, b));
   a=1; b=100; EXPECT_FALSE(safe_sub(NULL, a, b));
   a=100; b=0; EXPECT_TRUE(safe_sub(NULL, a, b));
@@ -715,7 +505,6 @@ int T_sub_u64() {
   int r=1;
   uint64_t a, b;
   a=SAFE_UINT64_MAX-1; b=SAFE_UINT64_MAX; EXPECT_FALSE(safe_sub(NULL, a, b));
-  a=0; EXPECT_FALSE(safe_dec(&a));
   a=SAFE_UINT64_MAX; b=SAFE_UINT64_MAX; EXPECT_TRUE(safe_sub(NULL, a, b));
   a=1; b=100; EXPECT_FALSE(safe_sub(NULL, a, b));
   a=100; b=0; EXPECT_TRUE(safe_sub(NULL, a, b));
@@ -728,7 +517,6 @@ int T_sub_ulong() {
   int r=1;
   unsigned long a, b;
   a=ULONG_MAX-1; b=ULONG_MAX; EXPECT_FALSE(safe_sub(NULL, a, b));
-  a=0; EXPECT_FALSE(safe_dec(&a));
   a=ULONG_MAX; b=ULONG_MAX; EXPECT_TRUE(safe_sub(NULL, a, b));
   a=1; b=100; EXPECT_FALSE(safe_sub(NULL, a, b));
   a=100; b=0; EXPECT_TRUE(safe_sub(NULL, a, b));
@@ -741,7 +529,6 @@ int T_sub_ulonglong() {
   int r=1;
   unsigned long long a, b;
   a=ULLONG_MAX-1; b=ULLONG_MAX; EXPECT_FALSE(safe_sub(NULL, a, b));
-  a=0; EXPECT_FALSE(safe_dec(&a));
   a=ULLONG_MAX; b=ULLONG_MAX; EXPECT_TRUE(safe_sub(NULL, a, b));
   a=1; b=100; EXPECT_FALSE(safe_sub(NULL, a, b));
   a=100; b=0; EXPECT_TRUE(safe_sub(NULL, a, b));
@@ -754,7 +541,6 @@ int T_sub_sizet() {
   int r=1;
   size_t a, b;
   a=SIZE_MAX-1; b=SIZE_MAX; EXPECT_FALSE(safe_sub(NULL, a, b));
-  a=0; EXPECT_FALSE(safe_dec(&a));
   a=SIZE_MAX; b=SIZE_MAX; EXPECT_TRUE(safe_sub(NULL, a, b));
   a=1; b=100; EXPECT_FALSE(safe_sub(NULL, a, b));
   a=100; b=0; EXPECT_TRUE(safe_sub(NULL, a, b));
@@ -773,9 +559,7 @@ int T_mul_s8() {
   a=SCHAR_MAX/2+1; b=2; EXPECT_FALSE(safe_mul(NULL, a, b));
   a=SCHAR_MAX/2; b=2; EXPECT_TRUE(safe_mul(NULL, a, b));
   a=100; b=0; EXPECT_TRUE(safe_mul(NULL, a, b));
-  a=-100; b=0; EXPECT_TRUE(safe_mul(NULL, a, b));
   a=10; b=2; EXPECT_TRUE(safe_mul(NULL, a, b));
-  a=-10; b=-2; EXPECT_TRUE(safe_mul(NULL, a, b));
   a=SCHAR_MAX; b=0; EXPECT_TRUE(safe_mul(NULL, a, b));
   a=SCHAR_MIN; b=0; EXPECT_TRUE(safe_mul(NULL, a, b));
   a=0; b=SCHAR_MAX; EXPECT_TRUE(safe_mul(NULL, a, b));
@@ -793,9 +577,7 @@ int T_mul_s16() {
   a=SHRT_MAX/2+1; b=2; EXPECT_FALSE(safe_mul(NULL, a, b));
   a=SHRT_MAX/2; b=2; EXPECT_TRUE(safe_mul(NULL, a, b));
   a=100; b=0; EXPECT_TRUE(safe_mul(NULL, a, b));
-  a=-100; b=0; EXPECT_TRUE(safe_mul(NULL, a, b));
   a=10; b=2; EXPECT_TRUE(safe_mul(NULL, a, b));
-  a=-10; b=-2; EXPECT_TRUE(safe_mul(NULL, a, b));
   a=SHRT_MAX; b=0; EXPECT_TRUE(safe_mul(NULL, a, b));
   a=SHRT_MIN; b=0; EXPECT_TRUE(safe_mul(NULL, a, b));
   a=0; b=SHRT_MAX; EXPECT_TRUE(safe_mul(NULL, a, b));
@@ -813,9 +595,7 @@ int T_mul_s32() {
   a=INT_MAX/2+1; b=2; EXPECT_FALSE(safe_mul(NULL, a, b));
   a=INT_MAX/2; b=2; EXPECT_TRUE(safe_mul(NULL, a, b));
   a=100; b=0; EXPECT_TRUE(safe_mul(NULL, a, b));
-  a=-100; b=0; EXPECT_TRUE(safe_mul(NULL, a, b));
   a=10; b=2; EXPECT_TRUE(safe_mul(NULL, a, b));
-  a=-10; b=-2; EXPECT_TRUE(safe_mul(NULL, a, b));
   a=INT_MAX; b=0; EXPECT_TRUE(safe_mul(NULL, a, b));
   a=INT_MIN; b=0; EXPECT_TRUE(safe_mul(NULL, a, b));
   a=0; b=INT_MAX; EXPECT_TRUE(safe_mul(NULL, a, b));
@@ -833,9 +613,7 @@ int T_mul_s64() {
   a=SAFE_INT64_MAX/2+1; b=2; EXPECT_FALSE(safe_mul(NULL, a, b));
   a=SAFE_INT64_MAX/2; b=2; EXPECT_TRUE(safe_mul(NULL, a, b));
   a=100; b=0; EXPECT_TRUE(safe_mul(NULL, a, b));
-  a=-100; b=0; EXPECT_TRUE(safe_mul(NULL, a, b));
   a=10; b=2; EXPECT_TRUE(safe_mul(NULL, a, b));
-  a=-10; b=-2; EXPECT_TRUE(safe_mul(NULL, a, b));
   a=SAFE_INT64_MAX; b=0; EXPECT_TRUE(safe_mul(NULL, a, b));
   a=SAFE_INT64_MIN; b=0; EXPECT_TRUE(safe_mul(NULL, a, b));
   a=0; b=SAFE_INT64_MAX; EXPECT_TRUE(safe_mul(NULL, a, b));
@@ -853,9 +631,7 @@ int T_mul_long() {
   a=LONG_MAX/2+1; b=2; EXPECT_FALSE(safe_mul(NULL, a, b));
   a=LONG_MAX/2; b=2; EXPECT_TRUE(safe_mul(NULL, a, b));
   a=100; b=0; EXPECT_TRUE(safe_mul(NULL, a, b));
-  a=-100; b=0; EXPECT_TRUE(safe_mul(NULL, a, b));
   a=10; b=2; EXPECT_TRUE(safe_mul(NULL, a, b));
-  a=-10; b=-2; EXPECT_TRUE(safe_mul(NULL, a, b));
   a=LONG_MAX; b=0; EXPECT_TRUE(safe_mul(NULL, a, b));
   a=LONG_MIN; b=0; EXPECT_TRUE(safe_mul(NULL, a, b));
   a=0; b=LONG_MAX; EXPECT_TRUE(safe_mul(NULL, a, b));
@@ -872,9 +648,7 @@ int T_mul_longlong() {
   a=LLONG_MAX/2+1; b=2; EXPECT_FALSE(safe_mul(NULL, a, b));
   a=LLONG_MAX/2; b=2; EXPECT_TRUE(safe_mul(NULL, a, b));
   a=100; b=0; EXPECT_TRUE(safe_mul(NULL, a, b));
-  a=-100; b=0; EXPECT_TRUE(safe_mul(NULL, a, b));
   a=10; b=2; EXPECT_TRUE(safe_mul(NULL, a, b));
-  a=-10; b=-2; EXPECT_TRUE(safe_mul(NULL, a, b));
   a=LLONG_MAX; b=0; EXPECT_TRUE(safe_mul(NULL, a, b));
   a=LLONG_MIN; b=0; EXPECT_TRUE(safe_mul(NULL, a, b));
   a=0; b=LLONG_MAX; EXPECT_TRUE(safe_mul(NULL, a, b));
@@ -891,9 +665,7 @@ int T_mul_ssizet() {
   a=SSIZE_MAX/2+1; b=2; EXPECT_FALSE(safe_mul(NULL, a, b));
   a=SSIZE_MAX/2; b=2; EXPECT_TRUE(safe_mul(NULL, a, b));
   a=100; b=0; EXPECT_TRUE(safe_mul(NULL, a, b));
-  a=-100; b=0; EXPECT_TRUE(safe_mul(NULL, a, b));
   a=10; b=2; EXPECT_TRUE(safe_mul(NULL, a, b));
-  a=-10; b=-2; EXPECT_TRUE(safe_mul(NULL, a, b));
   a=SSIZE_MAX; b=0; EXPECT_TRUE(safe_mul(NULL, a, b));
   a=SSIZE_MIN; b=0; EXPECT_TRUE(safe_mul(NULL, a, b));
   a=0; b=SSIZE_MAX; EXPECT_TRUE(safe_mul(NULL, a, b));
@@ -1028,31 +800,6 @@ int T_mul_sizet() {
   return r;
 }
 
-int T_mul_mixed() {
-  int r=1;
-  int8_t a = 1;
-  uint8_t b = 2;
-  uint16_t c = 3;
-  int32_t d = -10;
-  a=1; b=SCHAR_MAX; EXPECT_TRUE(safe_mul(NULL, a, b));
-  a=1; b=SCHAR_MAX+1; EXPECT_FALSE(safe_mul(NULL, a, b));
-  a=0; b=SCHAR_MAX+1; EXPECT_FALSE(safe_mul(NULL, a, b));
-  a=1; b=SCHAR_MAX-1; EXPECT_TRUE(safe_mul(NULL, a, b));
-  b=1; c=UCHAR_MAX; EXPECT_TRUE(safe_mul(NULL, b, c));
-  b=1; c=UCHAR_MAX+1; EXPECT_FALSE(safe_mul(NULL, b, c));
-  b=0; c=UCHAR_MAX+1; EXPECT_FALSE(safe_mul(NULL, b, c));
-  b=1; c=UCHAR_MAX-1; EXPECT_TRUE(safe_mul(NULL, b, c));
-  b=1; c=UCHAR_MAX-1; EXPECT_TRUE(safe_mul(NULL, c, b));
-  a=1; c=USHRT_MAX; EXPECT_FALSE(safe_mul(NULL, a, c));
-  b=1; d=-1; EXPECT_FALSE(safe_mul(NULL, b, d));
-  d=-4, b=UCHAR_MAX; EXPECT_TRUE(safe_mul(NULL, d, b));
-  a=1;b=1;c=USHRT_MAX-3; EXPECT_FALSE(safe_mul3(NULL, a, b, c));
-  a=1;b=1;c=1; EXPECT_TRUE(safe_mul3(NULL, a, b, c));
-  a=1;b=1;c=SCHAR_MAX-3; EXPECT_TRUE(safe_mul3(NULL, a, b, c));
-  return r;
-}
-
-
 /***** MOD *****/
 int T_mod_s8() {
   int r=1;
@@ -1185,11 +932,6 @@ int T_div_s8() {
   a=SCHAR_MIN; b=-1; EXPECT_FALSE(safe_div(NULL, a, b));
   a=100; b=0; EXPECT_FALSE(safe_div(NULL, a, b));
   a=10; b=2; EXPECT_TRUE(safe_div(NULL, a, b));
-  a=0; b=2; EXPECT_TRUE(safe_div(NULL, a, b));
-  a=-100; b=0; EXPECT_FALSE(safe_div(NULL, a, b));
-  a=-10; b=-2; EXPECT_TRUE(safe_div(NULL, a, b));
-  a=10; b=-2; EXPECT_TRUE(safe_div(NULL, a, b));
-  a=-10; b=2; EXPECT_TRUE(safe_div(NULL, a, b));
   return r;
 }
 
@@ -1199,11 +941,6 @@ int T_div_s16() {
   a=SHRT_MIN; b=-1; EXPECT_FALSE(safe_div(NULL, a, b));
   a=100; b=0; EXPECT_FALSE(safe_div(NULL, a, b));
   a=10; b=2; EXPECT_TRUE(safe_div(NULL, a, b));
-  a=0; b=2; EXPECT_TRUE(safe_div(NULL, a, b));
-  a=-100; b=0; EXPECT_FALSE(safe_div(NULL, a, b));
-  a=-10; b=-2; EXPECT_TRUE(safe_div(NULL, a, b));
-  a=10; b=-2; EXPECT_TRUE(safe_div(NULL, a, b));
-  a=-10; b=2; EXPECT_TRUE(safe_div(NULL, a, b));
   return r;
 }
 
@@ -1213,11 +950,6 @@ int T_div_s32() {
   a=INT_MIN; b=-1; EXPECT_FALSE(safe_div(NULL, a, b));
   a=100; b=0; EXPECT_FALSE(safe_div(NULL, a, b));
   a=10; b=2; EXPECT_TRUE(safe_div(NULL, a, b));
-  a=0; b=2; EXPECT_TRUE(safe_div(NULL, a, b));
-  a=-100; b=0; EXPECT_FALSE(safe_div(NULL, a, b));
-  a=-10; b=-2; EXPECT_TRUE(safe_div(NULL, a, b));
-  a=10; b=-2; EXPECT_TRUE(safe_div(NULL, a, b));
-  a=-10; b=2; EXPECT_TRUE(safe_div(NULL, a, b));
   return r;
 }
 
@@ -1227,11 +959,6 @@ int T_div_s64() {
   a=SAFE_INT64_MIN; b=-1; EXPECT_FALSE(safe_div(NULL, a, b));
   a=100; b=0; EXPECT_FALSE(safe_div(NULL, a, b));
   a=10; b=2; EXPECT_TRUE(safe_div(NULL, a, b));
-  a=0; b=2; EXPECT_TRUE(safe_div(NULL, a, b));
-  a=-100; b=0; EXPECT_FALSE(safe_div(NULL, a, b));
-  a=-10; b=-2; EXPECT_TRUE(safe_div(NULL, a, b));
-  a=10; b=-2; EXPECT_TRUE(safe_div(NULL, a, b));
-  a=-10; b=2; EXPECT_TRUE(safe_div(NULL, a, b));
   return r;
 }
 
@@ -1241,11 +968,6 @@ int T_div_long() {
   a=LONG_MIN; b=-1; EXPECT_FALSE(safe_div(NULL, a, b));
   a=100; b=0; EXPECT_FALSE(safe_div(NULL, a, b));
   a=10; b=2; EXPECT_TRUE(safe_div(NULL, a, b));
-  a=0; b=2; EXPECT_TRUE(safe_div(NULL, a, b));
-  a=-100; b=0; EXPECT_FALSE(safe_div(NULL, a, b));
-  a=-10; b=-2; EXPECT_TRUE(safe_div(NULL, a, b));
-  a=10; b=-2; EXPECT_TRUE(safe_div(NULL, a, b));
-  a=-10; b=2; EXPECT_TRUE(safe_div(NULL, a, b));
   return r;
 }
 int T_div_longlong() {
@@ -1254,11 +976,6 @@ int T_div_longlong() {
   a=LLONG_MIN; b=-1LL; EXPECT_FALSE(safe_div(NULL, a, b));
   a=100LL; b=0LL; EXPECT_FALSE(safe_div(NULL, a, b));
   a=10LL; b=2LL; EXPECT_TRUE(safe_div(NULL, a, b));
-  a=0; b=2; EXPECT_TRUE(safe_div(NULL, a, b));
-  a=-100LL; b=0LL; EXPECT_FALSE(safe_div(NULL, a, b));
-  a=-10LL; b=-2LL; EXPECT_TRUE(safe_div(NULL, a, b));
-  a=10; b=-2; EXPECT_TRUE(safe_div(NULL, a, b));
-  a=-10; b=2; EXPECT_TRUE(safe_div(NULL, a, b));
   return r;
 }
 int T_div_ssizet() {
@@ -1267,11 +984,6 @@ int T_div_ssizet() {
   a=SSIZE_MIN; b=-1; EXPECT_FALSE(safe_div(NULL, a, b));
   a=100; b=0; EXPECT_FALSE(safe_div(NULL, a, b));
   a=10; b=2; EXPECT_TRUE(safe_div(NULL, a, b));
-  a=0; b=2; EXPECT_TRUE(safe_div(NULL, a, b));
-  a=-100; b=0; EXPECT_FALSE(safe_div(NULL, a, b));
-  a=-10; b=-2; EXPECT_TRUE(safe_div(NULL, a, b));
-  a=10; b=-2; EXPECT_TRUE(safe_div(NULL, a, b));
-  a=-10; b=2; EXPECT_TRUE(safe_div(NULL, a, b));
   return r;
 }
 
@@ -1281,7 +993,6 @@ int T_div_u8() {
   a=0; b=UCHAR_MAX; EXPECT_TRUE(safe_div(NULL, a, b));
   a=100; b=0; EXPECT_FALSE(safe_div(NULL, a, b));
   a=10; b=2; EXPECT_TRUE(safe_div(NULL, a, b));
-  a=0; b=2; EXPECT_TRUE(safe_div(NULL, a, b));
   return r;
 }
 
@@ -1291,7 +1002,6 @@ int T_div_u16() {
   a=0; b=USHRT_MAX; EXPECT_TRUE(safe_div(NULL, a, b));
   a=100; b=0; EXPECT_FALSE(safe_div(NULL, a, b));
   a=10; b=2; EXPECT_TRUE(safe_div(NULL, a, b));
-  a=0; b=2; EXPECT_TRUE(safe_div(NULL, a, b));
   return r;
 }
 
@@ -1301,7 +1011,6 @@ int T_div_u32() {
   a=0; b=UINT_MAX; EXPECT_TRUE(safe_div(NULL, a, b));
   a=100; b=0; EXPECT_FALSE(safe_div(NULL, a, b));
   a=10; b=2; EXPECT_TRUE(safe_div(NULL, a, b));
-  a=0; b=2; EXPECT_TRUE(safe_div(NULL, a, b));
   return r;
 }
 
@@ -1311,7 +1020,6 @@ int T_div_u64() {
   a=0; b=SAFE_INT64_MAX; EXPECT_TRUE(safe_div(NULL, a, b));
   a=100; b=0; EXPECT_FALSE(safe_div(NULL, a, b));
   a=10; b=2; EXPECT_TRUE(safe_div(NULL, a, b));
-  a=0; b=2; EXPECT_TRUE(safe_div(NULL, a, b));
   return r;
 }
 
@@ -1321,7 +1029,6 @@ int T_div_ulong() {
   a=0; b=LONG_MAX; EXPECT_TRUE(safe_div(NULL, a, b));
   a=100; b=0; EXPECT_FALSE(safe_div(NULL, a, b));
   a=10; b=2; EXPECT_TRUE(safe_div(NULL, a, b));
-  a=0; b=2; EXPECT_TRUE(safe_div(NULL, a, b));
   return r;
 }
 
@@ -1331,7 +1038,6 @@ int T_div_ulonglong() {
   a=0ULL; b=~0ULL; EXPECT_TRUE(safe_div(NULL, a, b));
   a=100ULL; b=0ULL; EXPECT_FALSE(safe_div(NULL, a, b));
   a=10ULL; b=2ULL; EXPECT_TRUE(safe_div(NULL, a, b));
-  a=0; b=2; EXPECT_TRUE(safe_div(NULL, a, b));
   return r;
 }
 
@@ -1341,704 +1047,8 @@ int T_div_sizet() {
   a=0; b=SIZE_MAX; EXPECT_TRUE(safe_div(NULL, a, b));
   a=100; b=0; EXPECT_FALSE(safe_div(NULL, a, b));
   a=10; b=2; EXPECT_TRUE(safe_div(NULL, a, b));
-  a=0; b=2; EXPECT_TRUE(safe_div(NULL, a, b));
   return r;
 }
-
-/***** SHL *****/
-int T_shl_s8() {
-  int r=1;
-  int8_t a, b;
-  a=-1; b=1; EXPECT_FALSE(safe_shl(NULL, a, b));
-  a=1; b=-1; EXPECT_FALSE(safe_shl(NULL, a, b));
-  a=1; b=sizeof(int8_t)*CHAR_BIT + 1; EXPECT_FALSE(safe_shl(NULL, a, b));
-  a=1; b=sizeof(int8_t)*CHAR_BIT + 1; EXPECT_FALSE(safe_shl(NULL, a, b));
-  a=1; b=2; EXPECT_TRUE(safe_shl(NULL, a, b));
-  a=1; b=2; EXPECT_TRUE(safe_shl(NULL, a, b));
-  a=5; b=2; EXPECT_TRUE(safe_shl(NULL, a, b));
-  return r;
-}
-
-int T_shl_s16() {
-  int r=1;
-  int16_t a, b;
-  a=-1; b=1; EXPECT_FALSE(safe_shl(NULL, a, b));
-  a=1; b=-1; EXPECT_FALSE(safe_shl(NULL, a, b));
-  a=1; b=sizeof(int16_t)*CHAR_BIT + 1; EXPECT_FALSE(safe_shl(NULL, a, b));
-  a=1; b=sizeof(int16_t)*CHAR_BIT + 1; EXPECT_FALSE(safe_shl(NULL, a, b));
-  a=1; b=2; EXPECT_TRUE(safe_shl(NULL, a, b));
-  a=1; b=2; EXPECT_TRUE(safe_shl(NULL, a, b));
-  a=100; b=2; EXPECT_TRUE(safe_shl(NULL, a, b));
-  return r;
-}
-
-int T_shl_s32() {
-  int r=1;
-  int32_t a, b;
-  a=-1; b=1; EXPECT_FALSE(safe_shl(NULL, a, b));
-  a=1; b=-1; EXPECT_FALSE(safe_shl(NULL, a, b));
-  a=1; b=sizeof(int32_t)*CHAR_BIT + 1; EXPECT_FALSE(safe_shl(NULL, a, b));
-  a=1; b=sizeof(int32_t)*CHAR_BIT + 1; EXPECT_FALSE(safe_shl(NULL, a, b));
-  a=1; b=2; EXPECT_TRUE(safe_shl(NULL, a, b));
-  a=1; b=2; EXPECT_TRUE(safe_shl(NULL, a, b));
-  a=100; b=2; EXPECT_TRUE(safe_shl(NULL, a, b));
-  return r;
-}
-
-int T_shl_s64() {
-  int r=1;
-  int64_t a, b;
-  a=-1; b=1; EXPECT_FALSE(safe_shl(NULL, a, b));
-  a=1; b=-1; EXPECT_FALSE(safe_shl(NULL, a, b));
-  a=1; b=sizeof(int64_t)*CHAR_BIT + 1; EXPECT_FALSE(safe_shl(NULL, a, b));
-  a=1; b=sizeof(int64_t)*CHAR_BIT + 1; EXPECT_FALSE(safe_shl(NULL, a, b));
-  a=1; b=2; EXPECT_TRUE(safe_shl(NULL, a, b));
-  a=1; b=2; EXPECT_TRUE(safe_shl(NULL, a, b));
-  a=100; b=2; EXPECT_TRUE(safe_shl(NULL, a, b));
-  return r;
-}
-
-int T_shl_long() {
-  int r=1;
-  long a, b;
-  a=-1; b=1; EXPECT_FALSE(safe_shl(NULL, a, b));
-  a=1; b=-1; EXPECT_FALSE(safe_shl(NULL, a, b));
-  a=1; b=sizeof(long)*CHAR_BIT + 1; EXPECT_FALSE(safe_shl(NULL, a, b));
-  a=1; b=sizeof(long)*CHAR_BIT + 1; EXPECT_FALSE(safe_shl(NULL, a, b));
-  a=1; b=2; EXPECT_TRUE(safe_shl(NULL, a, b));
-  a=1; b=2; EXPECT_TRUE(safe_shl(NULL, a, b));
-  a=100; b=2; EXPECT_TRUE(safe_shl(NULL, a, b));
-  return r;
-}
-int T_shl_longlong() {
-  int r=1;
-  long long a, b;
-  a=-1; b=1; EXPECT_FALSE(safe_shl(NULL, a, b));
-  a=1; b=-1; EXPECT_FALSE(safe_shl(NULL, a, b));
-  a=1; b=sizeof(long long)*CHAR_BIT + 1; EXPECT_FALSE(safe_shl(NULL, a, b));
-  a=1; b=sizeof(long long)*CHAR_BIT + 1; EXPECT_FALSE(safe_shl(NULL, a, b));
-  a=1; b=2; EXPECT_TRUE(safe_shl(NULL, a, b));
-  a=1; b=2; EXPECT_TRUE(safe_shl(NULL, a, b));
-  a=100; b=2; EXPECT_TRUE(safe_shl(NULL, a, b));
-  return r;
-}
-int T_shl_ssizet() {
-  int r=1;
-  ssize_t a, b;
-   a=-1; b=1; EXPECT_FALSE(safe_shl(NULL, a, b));
-  a=1; b=-1; EXPECT_FALSE(safe_shl(NULL, a, b));
-  a=1; b=sizeof(ssize_t)*CHAR_BIT + 1; EXPECT_FALSE(safe_shl(NULL, a, b));
-  a=1; b=sizeof(ssize_t)*CHAR_BIT + 1; EXPECT_FALSE(safe_shl(NULL, a, b));
-  a=1; b=2; EXPECT_TRUE(safe_shl(NULL, a, b));
-  a=1; b=2; EXPECT_TRUE(safe_shl(NULL, a, b));
-  a=100; b=2; EXPECT_TRUE(safe_shl(NULL, a, b));
- return r;
-}
-
-int T_shl_u8() {
-  int r=1;
-  uint8_t a, b;
-  a=1; b=sizeof(typeof(a))*CHAR_BIT+1; EXPECT_FALSE(safe_shl(NULL,a, b));
-  a=4; b=sizeof(typeof(a))*CHAR_BIT; EXPECT_FALSE(safe_shl(NULL,a, b));
-  a=UCHAR_MAX; b=1; EXPECT_FALSE(safe_shl(NULL, a, b));
-  a=1; b=2; EXPECT_TRUE(safe_shl(NULL, a, b));
-  a=1; b=4; EXPECT_TRUE(safe_shl(NULL, a, b));
-  return r;
-}
-
-int T_shl_u16() {
-  int r=1;
-  uint16_t a, b;
-  a=1; b=sizeof(typeof(a))*CHAR_BIT+1; EXPECT_FALSE(safe_shl(NULL,a, b));
-  a=4; b=sizeof(typeof(a))*CHAR_BIT; EXPECT_FALSE(safe_shl(NULL,a, b));
-  a=USHRT_MAX; b=1; EXPECT_FALSE(safe_shl(NULL, a, b));
-  a=1; b=2; EXPECT_TRUE(safe_shl(NULL, a, b));
-  a=1; b=4; EXPECT_TRUE(safe_shl(NULL, a, b));
-  return r;
-}
-
-int T_shl_u32() {
-  int r=1;
-  uint32_t a, b;
-  a=1; b=sizeof(typeof(a))*CHAR_BIT+1; EXPECT_FALSE(safe_shl(NULL,a, b));
-  a=4; b=sizeof(typeof(a))*CHAR_BIT; EXPECT_FALSE(safe_shl(NULL,a, b));
-  a=UINT_MAX; b=1; EXPECT_FALSE(safe_shl(NULL, a, b));
-  a=1; b=2; EXPECT_TRUE(safe_shl(NULL, a, b));
-  a=1; b=4; EXPECT_TRUE(safe_shl(NULL, a, b));
-  return r;
-}
-
-int T_shl_u64() {
-  int r=1;
-  uint64_t a, b;
-  a=1; b=sizeof(typeof(a))*CHAR_BIT+1; EXPECT_FALSE(safe_shl(NULL,a, b));
-  a=4; b=sizeof(typeof(a))*CHAR_BIT; EXPECT_FALSE(safe_shl(NULL,a, b));
-  a=SAFE_UINT64_MAX; b=1; EXPECT_FALSE(safe_shl(NULL, a, b));
-  a=1; b=2; EXPECT_TRUE(safe_shl(NULL, a, b));
-  a=1; b=4; EXPECT_TRUE(safe_shl(NULL, a, b));
-  return r;
-}
-
-int T_shl_ulong() {
-  int r=1;
-  unsigned long a, b;
-  a=1; b=sizeof(typeof(a))*CHAR_BIT+1; EXPECT_FALSE(safe_shl(NULL,a, b));
-  a=4; b=sizeof(typeof(a))*CHAR_BIT; EXPECT_FALSE(safe_shl(NULL,a, b));
-  a=ULONG_MAX; b=1; EXPECT_FALSE(safe_shl(NULL, a, b));
-  a=1; b=2; EXPECT_TRUE(safe_shl(NULL, a, b));
-  a=1; b=4; EXPECT_TRUE(safe_shl(NULL, a, b));
-  return r;
-}
-
-int T_shl_ulonglong() {
-  int r=1;
-  unsigned long long a, b;
-  a=1; b=sizeof(typeof(a))*CHAR_BIT+1; EXPECT_FALSE(safe_shl(NULL,a, b));
-  a=4; b=sizeof(typeof(a))*CHAR_BIT; EXPECT_FALSE(safe_shl(NULL,a, b));
-  a=ULLONG_MAX; b=1; EXPECT_FALSE(safe_shl(NULL, a, b));
-  a=1; b=2; EXPECT_TRUE(safe_shl(NULL, a, b));
-  a=1; b=4; EXPECT_TRUE(safe_shl(NULL, a, b));
-  return r;
-}
-
-int T_shl_sizet() {
-  int r=1;
-  size_t a, b;
-  a=1; b=sizeof(typeof(a))*CHAR_BIT+1; EXPECT_FALSE(safe_shl(NULL,a, b));
-  a=4; b=sizeof(typeof(a))*CHAR_BIT; EXPECT_FALSE(safe_shl(NULL,a, b));
-  a=SIZE_MAX; b=1; EXPECT_FALSE(safe_shl(NULL, a, b));
-  a=1; b=2; EXPECT_TRUE(safe_shl(NULL, a, b));
-  a=1; b=4; EXPECT_TRUE(safe_shl(NULL, a, b));
-  return r;
-}
-
-/***** SHR *****/
-int T_shr_s8() {
-  int r=1;
-  int8_t a, b;
-  a=-1; b=1; EXPECT_FALSE(safe_shr(NULL, a, b));
-  a=1; b=-1; EXPECT_FALSE(safe_shr(NULL, a, b));
-  a=1; b=sizeof(int8_t)*CHAR_BIT + 1; EXPECT_FALSE(safe_shr(NULL, a, b));
-  a=1; b=sizeof(int8_t)*CHAR_BIT + 1; EXPECT_FALSE(safe_shr(NULL, a, b));
-  a=1; b=2; EXPECT_TRUE(safe_shr(NULL, a, b));
-  a=1; b=2; EXPECT_TRUE(safe_shr(NULL, a, b));
-  a=5; b=2; EXPECT_TRUE(safe_shr(NULL, a, b));
-  return r;
-}
-
-int T_shr_s16() {
-  int r=1;
-  int16_t a, b;
-  a=-1; b=1; EXPECT_FALSE(safe_shr(NULL, a, b));
-  a=1; b=-1; EXPECT_FALSE(safe_shr(NULL, a, b));
-  a=1; b=sizeof(int16_t)*CHAR_BIT + 1; EXPECT_FALSE(safe_shr(NULL, a, b));
-  a=1; b=sizeof(int16_t)*CHAR_BIT + 1; EXPECT_FALSE(safe_shr(NULL, a, b));
-  a=1; b=2; EXPECT_TRUE(safe_shr(NULL, a, b));
-  a=1; b=2; EXPECT_TRUE(safe_shr(NULL, a, b));
-  a=100; b=2; EXPECT_TRUE(safe_shr(NULL, a, b));
-  return r;
-}
-
-int T_shr_s32() {
-  int r=1;
-  int32_t a, b;
-  a=-1; b=1; EXPECT_FALSE(safe_shr(NULL, a, b));
-  a=1; b=-1; EXPECT_FALSE(safe_shr(NULL, a, b));
-  a=1; b=sizeof(int32_t)*CHAR_BIT + 1; EXPECT_FALSE(safe_shr(NULL, a, b));
-  a=1; b=sizeof(int32_t)*CHAR_BIT + 1; EXPECT_FALSE(safe_shr(NULL, a, b));
-  a=1; b=2; EXPECT_TRUE(safe_shr(NULL, a, b));
-  a=1; b=2; EXPECT_TRUE(safe_shr(NULL, a, b));
-  a=100; b=2; EXPECT_TRUE(safe_shr(NULL, a, b));
-  return r;
-}
-
-int T_shr_s64() {
-  int r=1;
-  int64_t a, b;
-  a=-1; b=1; EXPECT_FALSE(safe_shr(NULL, a, b));
-  a=1; b=-1; EXPECT_FALSE(safe_shr(NULL, a, b));
-  a=1; b=sizeof(int64_t)*CHAR_BIT + 1; EXPECT_FALSE(safe_shr(NULL, a, b));
-  a=1; b=sizeof(int64_t)*CHAR_BIT + 1; EXPECT_FALSE(safe_shr(NULL, a, b));
-  a=1; b=2; EXPECT_TRUE(safe_shr(NULL, a, b));
-  a=1; b=2; EXPECT_TRUE(safe_shr(NULL, a, b));
-  a=100; b=2; EXPECT_TRUE(safe_shr(NULL, a, b));
-  return r;
-}
-
-int T_shr_long() {
-  int r=1;
-  long a, b;
-  a=-1; b=1; EXPECT_FALSE(safe_shr(NULL, a, b));
-  a=1; b=-1; EXPECT_FALSE(safe_shr(NULL, a, b));
-  a=1; b=sizeof(long)*CHAR_BIT + 1; EXPECT_FALSE(safe_shr(NULL, a, b));
-  a=1; b=sizeof(long)*CHAR_BIT + 1; EXPECT_FALSE(safe_shr(NULL, a, b));
-  a=1; b=2; EXPECT_TRUE(safe_shr(NULL, a, b));
-  a=1; b=2; EXPECT_TRUE(safe_shr(NULL, a, b));
-  a=100; b=2; EXPECT_TRUE(safe_shr(NULL, a, b));
-  return r;
-}
-int T_shr_longlong() {
-  int r=1;
-  long long a, b;
-  a=-1; b=1; EXPECT_FALSE(safe_shr(NULL, a, b));
-  a=1; b=-1; EXPECT_FALSE(safe_shr(NULL, a, b));
-  a=1; b=sizeof(long long)*CHAR_BIT + 1; EXPECT_FALSE(safe_shr(NULL, a, b));
-  a=1; b=sizeof(long long)*CHAR_BIT + 1; EXPECT_FALSE(safe_shr(NULL, a, b));
-  a=1; b=2; EXPECT_TRUE(safe_shr(NULL, a, b));
-  a=1; b=2; EXPECT_TRUE(safe_shr(NULL, a, b));
-  a=100; b=2; EXPECT_TRUE(safe_shr(NULL, a, b));
-  return r;
-}
-int T_shr_ssizet() {
-  int r=1;
-  ssize_t a, b;
-   a=-1; b=1; EXPECT_FALSE(safe_shr(NULL, a, b));
-  a=1; b=-1; EXPECT_FALSE(safe_shr(NULL, a, b));
-  a=1; b=sizeof(ssize_t)*CHAR_BIT + 1; EXPECT_FALSE(safe_shr(NULL, a, b));
-  a=1; b=sizeof(ssize_t)*CHAR_BIT + 1; EXPECT_FALSE(safe_shr(NULL, a, b));
-  a=1; b=2; EXPECT_TRUE(safe_shr(NULL, a, b));
-  a=1; b=2; EXPECT_TRUE(safe_shr(NULL, a, b));
-  a=100; b=2; EXPECT_TRUE(safe_shr(NULL, a, b));
- return r;
-}
-
-int T_shr_u8() {
-  int r=1;
-  uint8_t a, b;
-  a=1; b=sizeof(typeof(a))*CHAR_BIT+1; EXPECT_FALSE(safe_shr(NULL,a, b));
-  a=4; b=sizeof(typeof(a))*CHAR_BIT; EXPECT_FALSE(safe_shr(NULL,a, b));
-  a=1; b=2; EXPECT_TRUE(safe_shr(NULL, a, b));
-  a=1; b=4; EXPECT_TRUE(safe_shr(NULL, a, b));
-  return r;
-}
-
-int T_shr_u16() {
-  int r=1;
-  uint16_t a, b;
-  a=1; b=sizeof(typeof(a))*CHAR_BIT+1; EXPECT_FALSE(safe_shr(NULL,a, b));
-  a=4; b=sizeof(typeof(a))*CHAR_BIT; EXPECT_FALSE(safe_shr(NULL,a, b));
-  a=1; b=2; EXPECT_TRUE(safe_shr(NULL, a, b));
-  a=1; b=4; EXPECT_TRUE(safe_shr(NULL, a, b));
-  return r;
-}
-
-int T_shr_u32() {
-  int r=1;
-  uint32_t a, b;
-  a=1; b=sizeof(typeof(a))*CHAR_BIT+1; EXPECT_FALSE(safe_shr(NULL,a, b));
-  a=4; b=sizeof(typeof(a))*CHAR_BIT; EXPECT_FALSE(safe_shr(NULL,a, b));
-  a=1; b=2; EXPECT_TRUE(safe_shr(NULL, a, b));
-  a=1; b=4; EXPECT_TRUE(safe_shr(NULL, a, b));
-  return r;
-}
-
-int T_shr_u64() {
-  int r=1;
-  uint64_t a, b;
-  a=1; b=sizeof(typeof(a))*CHAR_BIT+1; EXPECT_FALSE(safe_shr(NULL,a, b));
-  a=4; b=sizeof(typeof(a))*CHAR_BIT; EXPECT_FALSE(safe_shr(NULL,a, b));
-  a=1; b=2; EXPECT_TRUE(safe_shr(NULL, a, b));
-  a=1; b=4; EXPECT_TRUE(safe_shr(NULL, a, b));
-  return r;
-}
-
-int T_shr_ulong() {
-  int r=1;
-  unsigned long a, b;
-  a=1; b=sizeof(typeof(a))*CHAR_BIT+1; EXPECT_FALSE(safe_shr(NULL,a, b));
-  a=4; b=sizeof(typeof(a))*CHAR_BIT; EXPECT_FALSE(safe_shr(NULL,a, b));
-  a=1; b=2; EXPECT_TRUE(safe_shr(NULL, a, b));
-  a=1; b=4; EXPECT_TRUE(safe_shr(NULL, a, b));
-  return r;
-}
-
-int T_shr_ulonglong() {
-  int r=1;
-  unsigned long long a, b;
-  a=1; b=sizeof(typeof(a))*CHAR_BIT+1; EXPECT_FALSE(safe_shr(NULL,a, b));
-  a=4; b=sizeof(typeof(a))*CHAR_BIT; EXPECT_FALSE(safe_shr(NULL,a, b));
-  a=1; b=2; EXPECT_TRUE(safe_shr(NULL, a, b));
-  a=1; b=4; EXPECT_TRUE(safe_shr(NULL, a, b));
-  return r;
-}
-
-int T_shr_sizet() {
-  int r=1;
-  size_t a, b;
-  a=1; b=sizeof(typeof(a))*CHAR_BIT+1; EXPECT_FALSE(safe_shr(NULL,a, b));
-  a=4; b=sizeof(typeof(a))*CHAR_BIT; EXPECT_FALSE(safe_shr(NULL,a, b));
-  a=1; b=2; EXPECT_TRUE(safe_shr(NULL, a, b));
-  a=1; b=4; EXPECT_TRUE(safe_shr(NULL, a, b));
-  return r;
-}
-
-/***** SAFE_IOPF *****/
-
-int T_iopf_null() {
-  int r=1;
-  EXPECT_FALSE(safe_iopf(NULL, "+", 1, 1));
-  return r;
-}
-
-/* Ensure that arguments can also be targets */
-#if 0 /* TODO */
-int T_iopf_self() {
-  int r=1;
-  int a = 10, b = 20, c = 30;
-  EXPECT_TRUE(safe_iopf(&a, "+", a, b));
-  EXPECT_TRUE(a == 30);
-  a = 10, b = 20;
-  EXPECT_TRUE(safe_iopf(&b, "+", a, b));
-  EXPECT_TRUE(b == 30);
-  a = 30, b = 20, c = 10;
-  EXPECT_TRUE(safe_iopf(&c, "++", a, b, c));
-  EXPECT_TRUE(c == 60);
-  return r;
-}
-#endif
-
-
-/*** IOPF ADD ***/
-
-int T_iopf_add_u8u8() {
-  int r=1;
-  uint8_t a, b, c;
-  a=10 ,b=10, c=100; EXPECT_TRUE(safe_iopf(&c, "u8+u8", a, b));
-                     EXPECT_TRUE(c == 20);
-  a=0 ,b=0, c=100; EXPECT_TRUE(safe_iopf(&c, "u8+u8", a, b));
-                   EXPECT_TRUE(c == 0);
-  a=UCHAR_MAX-1, b=1, c=0; EXPECT_TRUE(safe_iopf(&c, "u8+u8", a, b));
-                           EXPECT_TRUE(c == UCHAR_MAX);
-  a=UCHAR_MAX, b=1, c=0; EXPECT_FALSE(safe_iopf(&c, "u8+u8", a, b));
-                         EXPECT_TRUE(c == 0);
-  a=UCHAR_MAX-1, b=1, c=0; EXPECT_TRUE(safe_iopf(&c, "u8+u8", b, a));
-                           EXPECT_TRUE(c == UCHAR_MAX);
-  a=UCHAR_MAX, b=1, c=0; EXPECT_FALSE(safe_iopf(&c, "u8+u8", b, a));
-                         EXPECT_TRUE(c == 0);
-
-  return r;
-}
-
-int T_iopf_add_u16u16() {
-  int r=1;
-  uint16_t a, b, c;
-  a=10 ,b=10, c=100; EXPECT_TRUE(safe_iopf(&c, "u16+u16", a, b));
-                     EXPECT_TRUE(c == 20);
-  a=0 ,b=0, c=100; EXPECT_TRUE(safe_iopf(&c, "u16+u16", a, b));
-                   EXPECT_TRUE(c == 0);
-  a=USHRT_MAX-1, b=1, c=0; EXPECT_TRUE(safe_iopf(&c, "u16+u16", a, b));
-                           EXPECT_TRUE(c == USHRT_MAX);
-  a=USHRT_MAX, b=1, c=0; EXPECT_FALSE(safe_iopf(&c, "u16+u16", a, b));
-                         EXPECT_TRUE(c == 0);
-  return r;
-}
-
-int T_iopf_add_u32u32() {
-  int r=1;
-  uint32_t a, b, c;
-  a=10 ,b=10, c=100; EXPECT_TRUE(safe_iopf(&c, "u32+u32", a, b));
-                     EXPECT_TRUE(c == 20);
-  a=0 ,b=0, c=100; EXPECT_TRUE(safe_iopf(&c, "u32+u32", a, b));
-                   EXPECT_TRUE(c == 0);
-  a=UINT_MAX-1, b=1, c=0; EXPECT_TRUE(safe_iopf(&c, "u32+u32", a, b));
-                          EXPECT_TRUE(c == UINT_MAX);
-  a=UINT_MAX, b=1, c=0; EXPECT_FALSE(safe_iopf(&c, "u32+u32", a, b));
-                        EXPECT_TRUE(c == 0);
-  return r;
-}
-
-int T_iopf_add_u64u64() {
-  int r=1;
-  uint64_t a, b, c;
-  a=10 ,b=10, c=100; EXPECT_TRUE(safe_iopf(&c, "u64+u64", a, b));
-                     EXPECT_TRUE(c == 20);
-  a=0 ,b=0, c=100; EXPECT_TRUE(safe_iopf(&c, "u64+u64", a, b));
-                   EXPECT_TRUE(c == 0);
-  a=SAFE_UINT64_MAX-1, b=1, c=0; EXPECT_TRUE(safe_iopf(&c, "u64+u64", a, b));
-                                 EXPECT_TRUE(c == SAFE_UINT64_MAX);
-  a=SAFE_UINT64_MAX, b=1, c=0; EXPECT_FALSE(safe_iopf(&c, "u64+u64", a, b));
-                               EXPECT_TRUE(c == 0);
-  return r;
-}
-
-int T_iopf_add_s8s8() {
-  int r=1;
-  int8_t a, b, c;
-  a=10 ,b=10, c=100; EXPECT_TRUE(safe_iopf(&c, "s8+s8", a, b));
-                     EXPECT_TRUE(c == 20);
-  a=0 ,b=0, c=100; EXPECT_TRUE(safe_iopf(&c, "s8+s8", a, b));
-                   EXPECT_TRUE(c == 0);
-  a=SCHAR_MAX-1, b=1, c=0; EXPECT_TRUE(safe_iopf(&c, "s8+s8", a, b));
-                           EXPECT_TRUE(c == SCHAR_MAX);
-  a=SCHAR_MAX, b=1, c=0; EXPECT_FALSE(safe_iopf(&c, "s8+s8", a, b));
-                        EXPECT_TRUE(c == 0);
-  a=SCHAR_MAX-1, b=1, c=0; EXPECT_TRUE(safe_iopf(&c, "s8+s8", b, a));
-                          EXPECT_TRUE(c == SCHAR_MAX);
-  a=SCHAR_MAX, b=1, c=0; EXPECT_FALSE(safe_iopf(&c, "s8+s8", b, a));
-                        EXPECT_TRUE(c == 0);
-  a=SCHAR_MIN+1, b=-1, c=0; EXPECT_TRUE(safe_iopf(&c, "s8+s8", a, b));
-                           EXPECT_TRUE(c == SCHAR_MIN);
-  a=SCHAR_MIN, b=-1, c=0; EXPECT_FALSE(safe_iopf(&c, "s8+s8", a, b));
-                         EXPECT_TRUE(c == 0);
-  a=SCHAR_MIN+1, b=-1, c=0; EXPECT_TRUE(safe_iopf(&c, "s8+s8", b, a));
-                           EXPECT_TRUE(c == SCHAR_MIN);
-  a=SCHAR_MIN, b=-1, c=0; EXPECT_FALSE(safe_iopf(&c, "s8+s8", b, a));
-                         EXPECT_TRUE(c == 0);
-  return r;
-}
-
-int T_iopf_add_s16s16() {
-  int r=1;
-  int16_t a, b, c;
-  a=10 ,b=10, c=100; EXPECT_TRUE(safe_iopf(&c, "s16+s16", a, b));
-                     EXPECT_TRUE(c == 20);
-  a=0 ,b=0, c=100; EXPECT_TRUE(safe_iopf(&c, "s16+s16", a, b));
-                   EXPECT_TRUE(c == 0);
-  a=SHRT_MAX-1, b=1, c=0; EXPECT_TRUE(safe_iopf(&c, "s16+s16", a, b));
-                           EXPECT_TRUE(c == SHRT_MAX);
-  a=SHRT_MAX, b=1, c=0; EXPECT_FALSE(safe_iopf(&c, "s16+s16", a, b));
-                        EXPECT_TRUE(c == 0);
-  a=SHRT_MAX-1, b=1, c=0; EXPECT_TRUE(safe_iopf(&c, "s16+s16", b, a));
-                          EXPECT_TRUE(c == SHRT_MAX);
-  a=SHRT_MAX, b=1, c=0; EXPECT_FALSE(safe_iopf(&c, "s16+s16", b, a));
-                        EXPECT_TRUE(c == 0);
-  a=SHRT_MIN+1, b=-1, c=0; EXPECT_TRUE(safe_iopf(&c, "s16+s16", a, b));
-                           EXPECT_TRUE(c == SHRT_MIN);
-  a=SHRT_MIN, b=-1, c=0; EXPECT_FALSE(safe_iopf(&c, "s16+s16", a, b));
-                         EXPECT_TRUE(c == 0);
-  a=SHRT_MIN+1, b=-1, c=0; EXPECT_TRUE(safe_iopf(&c, "s16+s16", b, a));
-                           EXPECT_TRUE(c == SHRT_MIN);
-  a=SHRT_MIN, b=-1, c=0; EXPECT_FALSE(safe_iopf(&c, "s16+s16", b, a));
-                         EXPECT_TRUE(c == 0);
-  return r;
-}
-
-
-int T_iopf_add_s32s32() {
-  int r=1;
-  int32_t a, b, c;
-  a=10 ,b=10, c=100; EXPECT_TRUE(safe_iopf(&c, "s32+s32", a, b));
-                     EXPECT_TRUE(c == 20);
-  a=0 ,b=0, c=100; EXPECT_TRUE(safe_iopf(&c, "s32+s32", a, b));
-                   EXPECT_TRUE(c == 0);
-  a=INT_MAX-1, b=1, c=0; EXPECT_TRUE(safe_iopf(&c, "s32+s32", a, b));
-                           EXPECT_TRUE(c == INT_MAX);
-  a=INT_MAX, b=1, c=0; EXPECT_FALSE(safe_iopf(&c, "s32+s32", a, b));
-                        EXPECT_TRUE(c == 0);
-  a=INT_MAX-1, b=1, c=0; EXPECT_TRUE(safe_iopf(&c, "s32+s32", b, a));
-                          EXPECT_TRUE(c == INT_MAX);
-  a=INT_MAX, b=1, c=0; EXPECT_FALSE(safe_iopf(&c, "s32+s32", b, a));
-                        EXPECT_TRUE(c == 0);
-  a=INT_MIN+1, b=-1, c=0; EXPECT_TRUE(safe_iopf(&c, "s32+s32", a, b));
-                           EXPECT_TRUE(c == INT_MIN);
-  a=INT_MIN, b=-1, c=0; EXPECT_FALSE(safe_iopf(&c, "s32+s32", a, b));
-                         EXPECT_TRUE(c == 0);
-  a=INT_MIN+1, b=-1, c=0; EXPECT_TRUE(safe_iopf(&c, "s32+s32", b, a));
-                           EXPECT_TRUE(c == INT_MIN);
-  a=INT_MIN, b=-1, c=0; EXPECT_FALSE(safe_iopf(&c, "s32+s32", b, a));
-                         EXPECT_TRUE(c == 0);
-  return r;
-}
-
-
-int T_iopf_add_s64s64() {
-  int r=1;
-  int64_t a, b, c;
-  a=10 ,b=10, c=100; EXPECT_TRUE(safe_iopf(&c, "s64+s64", a, b));
-                     EXPECT_TRUE(c == 20);
-  a=0 ,b=0, c=100; EXPECT_TRUE(safe_iopf(&c, "s64+s64", a, b));
-                   EXPECT_TRUE(c == 0);
-  a=SAFE_INT64_MAX-1, b=1, c=0; EXPECT_TRUE(safe_iopf(&c, "s64+s64", a, b));
-                           EXPECT_TRUE(c == SAFE_INT64_MAX);
-  a=SAFE_INT64_MAX, b=1, c=0; EXPECT_FALSE(safe_iopf(&c, "s64+s64", a, b));
-                        EXPECT_TRUE(c == 0);
-  a=SAFE_INT64_MAX-1, b=1, c=0; EXPECT_TRUE(safe_iopf(&c, "s64+s64", b, a));
-                          EXPECT_TRUE(c == SAFE_INT64_MAX);
-  a=SAFE_INT64_MAX, b=1, c=0; EXPECT_FALSE(safe_iopf(&c, "s64+s64", b, a));
-                        EXPECT_TRUE(c == 0);
-  a=SAFE_INT64_MIN+1, b=-1, c=0; EXPECT_TRUE(safe_iopf(&c, "s64+s64", a, b));
-                           EXPECT_TRUE(c == SAFE_INT64_MIN);
-  a=SAFE_INT64_MIN, b=-1, c=0; EXPECT_FALSE(safe_iopf(&c, "s64+s64", a, b));
-                         EXPECT_TRUE(c == 0);
-  a=SAFE_INT64_MIN+1, b=-1, c=0; EXPECT_TRUE(safe_iopf(&c, "s64+s64", b, a));
-                           EXPECT_TRUE(c == SAFE_INT64_MIN);
-  a=SAFE_INT64_MIN, b=-1, c=0; EXPECT_FALSE(safe_iopf(&c, "s64+s64", b, a));
-                         EXPECT_TRUE(c == 0);
-  return r;
-}
-
-/*** IOPF MUL ***/
-int T_iopf_mul_u8u8() {
-  int r=1;
-  uint8_t a, b, c;
-  a=10 ,b=10, c=100; EXPECT_TRUE(safe_iopf(&c, "u8+u8", a, b));
-                     EXPECT_TRUE(c == 20);
-  a=0 ,b=0, c=100; EXPECT_TRUE(safe_iopf(&c, "u8+u8", a, b));
-                   EXPECT_TRUE(c == 0);
-  a=UCHAR_MAX-1, b=1, c=0; EXPECT_TRUE(safe_iopf(&c, "u8+u8", a, b));
-                           EXPECT_TRUE(c == UCHAR_MAX);
-  a=UCHAR_MAX, b=1, c=0; EXPECT_FALSE(safe_iopf(&c, "u8+u8", a, b));
-                         EXPECT_TRUE(c == 0);
-  a=UCHAR_MAX-1, b=1, c=0; EXPECT_TRUE(safe_iopf(&c, "u8+u8", b, a));
-                           EXPECT_TRUE(c == UCHAR_MAX);
-  a=UCHAR_MAX, b=1, c=0; EXPECT_FALSE(safe_iopf(&c, "u8+u8", b, a));
-                         EXPECT_TRUE(c == 0);
-
-  return r;
-}
-
-int T_iopf_mul_u16u16() {
-  int r=1;
-  uint16_t a, b, c;
-  a=10 ,b=10, c=100; EXPECT_TRUE(safe_iopf(&c, "u16+u16", a, b));
-                     EXPECT_TRUE(c == 20);
-  a=0 ,b=0, c=100; EXPECT_TRUE(safe_iopf(&c, "u16+u16", a, b));
-                   EXPECT_TRUE(c == 0);
-  a=USHRT_MAX-1, b=1, c=0; EXPECT_TRUE(safe_iopf(&c, "u16+u16", a, b));
-                           EXPECT_TRUE(c == USHRT_MAX);
-  a=USHRT_MAX, b=1, c=0; EXPECT_FALSE(safe_iopf(&c, "u16+u16", a, b));
-                         EXPECT_TRUE(c == 0);
-  return r;
-}
-
-int T_iopf_mul_u32u32() {
-  int r=1;
-  uint32_t a, b, c;
-  a=10 ,b=10, c=100; EXPECT_TRUE(safe_iopf(&c, "u32+u32", a, b));
-                     EXPECT_TRUE(c == 20);
-  a=0 ,b=0, c=100; EXPECT_TRUE(safe_iopf(&c, "u32+u32", a, b));
-                   EXPECT_TRUE(c == 0);
-  a=UINT_MAX-1, b=1, c=0; EXPECT_TRUE(safe_iopf(&c, "u32+u32", a, b));
-                          EXPECT_TRUE(c == UINT_MAX);
-  a=UINT_MAX, b=1, c=0; EXPECT_FALSE(safe_iopf(&c, "u32+u32", a, b));
-                        EXPECT_TRUE(c == 0);
-  return r;
-}
-
-int T_iopf_mul_u64u64() {
-  int r=1;
-  uint64_t a, b, c;
-  a=10 ,b=10, c=100; EXPECT_TRUE(safe_iopf(&c, "u64+u64", a, b));
-                     EXPECT_TRUE(c == 20);
-  a=0 ,b=0, c=100; EXPECT_TRUE(safe_iopf(&c, "u64+u64", a, b));
-                   EXPECT_TRUE(c == 0);
-  a=SAFE_UINT64_MAX-1, b=1, c=0; EXPECT_TRUE(safe_iopf(&c, "u64+u64", a, b));
-                                 EXPECT_TRUE(c == SAFE_UINT64_MAX);
-  a=SAFE_UINT64_MAX, b=1, c=0; EXPECT_FALSE(safe_iopf(&c, "u64+u64", a, b));
-                               EXPECT_TRUE(c == 0);
-  return r;
-}
-
-int T_iopf_mul_s8s8() {
-  int r=1;
-  int8_t a, b, c;
-  a=10 ,b=10, c=100; EXPECT_TRUE(safe_iopf(&c, "s8+s8", a, b));
-                     EXPECT_TRUE(c == 20);
-  a=0 ,b=0, c=100; EXPECT_TRUE(safe_iopf(&c, "s8+s8", a, b));
-                   EXPECT_TRUE(c == 0);
-  a=SCHAR_MAX-1, b=1, c=0; EXPECT_TRUE(safe_iopf(&c, "s8+s8", a, b));
-                           EXPECT_TRUE(c == SCHAR_MAX);
-  a=SCHAR_MAX, b=1, c=0; EXPECT_FALSE(safe_iopf(&c, "s8+s8", a, b));
-                        EXPECT_TRUE(c == 0);
-  a=SCHAR_MAX-1, b=1, c=0; EXPECT_TRUE(safe_iopf(&c, "s8+s8", b, a));
-                          EXPECT_TRUE(c == SCHAR_MAX);
-  a=SCHAR_MAX, b=1, c=0; EXPECT_FALSE(safe_iopf(&c, "s8+s8", b, a));
-                        EXPECT_TRUE(c == 0);
-  a=SCHAR_MIN+1, b=-1, c=0; EXPECT_TRUE(safe_iopf(&c, "s8+s8", a, b));
-                           EXPECT_TRUE(c == SCHAR_MIN);
-  a=SCHAR_MIN, b=-1, c=0; EXPECT_FALSE(safe_iopf(&c, "s8+s8", a, b));
-                         EXPECT_TRUE(c == 0);
-  a=SCHAR_MIN+1, b=-1, c=0; EXPECT_TRUE(safe_iopf(&c, "s8+s8", b, a));
-                           EXPECT_TRUE(c == SCHAR_MIN);
-  a=SCHAR_MIN, b=-1, c=0; EXPECT_FALSE(safe_iopf(&c, "s8+s8", b, a));
-                         EXPECT_TRUE(c == 0);
-  return r;
-}
-
-int T_iopf_mul_s16s16() {
-  int r=1;
-  int16_t a, b, c;
-  a=10 ,b=10, c=100; EXPECT_TRUE(safe_iopf(&c, "s16+s16", a, b));
-                     EXPECT_TRUE(c == 20);
-  a=0 ,b=0, c=100; EXPECT_TRUE(safe_iopf(&c, "s16+s16", a, b));
-                   EXPECT_TRUE(c == 0);
-  a=SHRT_MAX-1, b=1, c=0; EXPECT_TRUE(safe_iopf(&c, "s16+s16", a, b));
-                           EXPECT_TRUE(c == SHRT_MAX);
-  a=SHRT_MAX, b=1, c=0; EXPECT_FALSE(safe_iopf(&c, "s16+s16", a, b));
-                        EXPECT_TRUE(c == 0);
-  a=SHRT_MAX-1, b=1, c=0; EXPECT_TRUE(safe_iopf(&c, "s16+s16", b, a));
-                          EXPECT_TRUE(c == SHRT_MAX);
-  a=SHRT_MAX, b=1, c=0; EXPECT_FALSE(safe_iopf(&c, "s16+s16", b, a));
-                        EXPECT_TRUE(c == 0);
-  a=SHRT_MIN+1, b=-1, c=0; EXPECT_TRUE(safe_iopf(&c, "s16+s16", a, b));
-                           EXPECT_TRUE(c == SHRT_MIN);
-  a=SHRT_MIN, b=-1, c=0; EXPECT_FALSE(safe_iopf(&c, "s16+s16", a, b));
-                         EXPECT_TRUE(c == 0);
-  a=SHRT_MIN+1, b=-1, c=0; EXPECT_TRUE(safe_iopf(&c, "s16+s16", b, a));
-                           EXPECT_TRUE(c == SHRT_MIN);
-  a=SHRT_MIN, b=-1, c=0; EXPECT_FALSE(safe_iopf(&c, "s16+s16", b, a));
-                         EXPECT_TRUE(c == 0);
-  return r;
-}
-
-
-int T_iopf_mul_s32s32() {
-  int r=1;
-  int32_t a, b, c;
-  a=10 ,b=10, c=100; EXPECT_TRUE(safe_iopf(&c, "s32+s32", a, b));
-                     EXPECT_TRUE(c == 20);
-  a=0 ,b=0, c=100; EXPECT_TRUE(safe_iopf(&c, "s32+s32", a, b));
-                   EXPECT_TRUE(c == 0);
-  a=INT_MAX-1, b=1, c=0; EXPECT_TRUE(safe_iopf(&c, "s32+s32", a, b));
-                           EXPECT_TRUE(c == INT_MAX);
-  a=INT_MAX, b=1, c=0; EXPECT_FALSE(safe_iopf(&c, "s32+s32", a, b));
-                        EXPECT_TRUE(c == 0);
-  a=INT_MAX-1, b=1, c=0; EXPECT_TRUE(safe_iopf(&c, "s32+s32", b, a));
-                          EXPECT_TRUE(c == INT_MAX);
-  a=INT_MAX, b=1, c=0; EXPECT_FALSE(safe_iopf(&c, "s32+s32", b, a));
-                        EXPECT_TRUE(c == 0);
-  a=INT_MIN+1, b=-1, c=0; EXPECT_TRUE(safe_iopf(&c, "s32+s32", a, b));
-                           EXPECT_TRUE(c == INT_MIN);
-  a=INT_MIN, b=-1, c=0; EXPECT_FALSE(safe_iopf(&c, "s32+s32", a, b));
-                         EXPECT_TRUE(c == 0);
-  a=INT_MIN+1, b=-1, c=0; EXPECT_TRUE(safe_iopf(&c, "s32+s32", b, a));
-                           EXPECT_TRUE(c == INT_MIN);
-  a=INT_MIN, b=-1, c=0; EXPECT_FALSE(safe_iopf(&c, "s32+s32", b, a));
-                         EXPECT_TRUE(c == 0);
-  return r;
-}
-
-
-int T_iopf_mul_s64s64() {
-  int r=1;
-  int64_t a, b, c;
-  a=10 ,b=10, c=100; EXPECT_TRUE(safe_iopf(&c, "s64+s64", a, b));
-                     EXPECT_TRUE(c == 20);
-  a=0 ,b=0, c=100; EXPECT_TRUE(safe_iopf(&c, "s64+s64", a, b));
-                   EXPECT_TRUE(c == 0);
-  a=SAFE_INT64_MAX-1, b=1, c=0; EXPECT_TRUE(safe_iopf(&c, "s64+s64", a, b));
-                           EXPECT_TRUE(c == SAFE_INT64_MAX);
-  a=SAFE_INT64_MAX, b=1, c=0; EXPECT_FALSE(safe_iopf(&c, "s64+s64", a, b));
-                        EXPECT_TRUE(c == 0);
-  a=SAFE_INT64_MAX-1, b=1, c=0; EXPECT_TRUE(safe_iopf(&c, "s64+s64", b, a));
-                          EXPECT_TRUE(c == SAFE_INT64_MAX);
-  a=SAFE_INT64_MAX, b=1, c=0; EXPECT_FALSE(safe_iopf(&c, "s64+s64", b, a));
-                        EXPECT_TRUE(c == 0);
-  a=SAFE_INT64_MIN+1, b=-1, c=0; EXPECT_TRUE(safe_iopf(&c, "s64+s64", a, b));
-                           EXPECT_TRUE(c == SAFE_INT64_MIN);
-  a=SAFE_INT64_MIN, b=-1, c=0; EXPECT_FALSE(safe_iopf(&c, "s64+s64", a, b));
-                         EXPECT_TRUE(c == 0);
-  a=SAFE_INT64_MIN+1, b=-1, c=0; EXPECT_TRUE(safe_iopf(&c, "s64+s64", b, a));
-                           EXPECT_TRUE(c == SAFE_INT64_MIN);
-  a=SAFE_INT64_MIN, b=-1, c=0; EXPECT_FALSE(safe_iopf(&c, "s64+s64", b, a));
-                         EXPECT_TRUE(c == 0);
-  return r;
-}
-
-
-
-
-/***** MISC *****/
 
 int T_magic_constants() {
   int r=1;
@@ -2073,159 +1083,12 @@ int T_magic_constants() {
   return r;
 }
 
-#ifdef SAFE_IOP_SPEED_TEST
-#include <sys/time.h>
-#include <time.h>
 
-#define SPEED_TEST(_type, _tests, _ops, _op, _fn) ({ \
-  int tnum; \
-  printf("%s: speed test(" #_type ", %d, %u, %s)\n", \
-         __func__, _tests, _ops, #_op); \
-  for (tnum=0; tnum < (_tests); ++tnum) { \
-    unsigned int speed_i = 0; \
-    _type speed_a=0x41, speed_b=0x42, speed_c; \
-    struct timeval start, finish; \
-    double raw=0, safe=0; \
-    gettimeofday(&start, NULL); \
-    for (speed_c=0,speed_i=0; speed_i < _ops; ++speed_i) \
-      speed_c = speed_a _op speed_b; \
-    for (speed_c=0,speed_i=0; speed_i < _ops; ++speed_i) \
-      speed_c = speed_a _op speed_b; \
-    for (speed_c=0,speed_i=0; speed_i < _ops; ++speed_i) \
-      speed_c = speed_a _op speed_b; \
-    gettimeofday(&finish, NULL); \
-    raw = finish.tv_sec - start.tv_sec + \
-          (finish.tv_usec - start.tv_usec) / 1.e6; \
-    gettimeofday(&start, NULL); \
-    for (speed_c=0,speed_i=0; speed_i < _ops; ++speed_i) \
-      _fn(&speed_c, speed_a, speed_b); \
-    for (speed_c=0,speed_i=0; speed_i < _ops; ++speed_i) \
-      _fn(&speed_c, speed_a, speed_b); \
-    for (speed_c=0,speed_i=0; speed_i < _ops; ++speed_i) \
-      _fn(&speed_c, speed_a, speed_b); \
-    gettimeofday(&finish, NULL); \
-    safe = finish.tv_sec - start.tv_sec + \
-          (finish.tv_usec - start.tv_usec) / 1.e6; \
-    printf("%s: [%d] %u*3 ops; raw: %.9fs safe: %.9fs\n", \
-           __func__, tnum, speed_i, raw, safe); \
-  } \
-})
 
-int T_speed() {
-  int r=1, truns=2;
-  unsigned int runs = UINT_MAX;
-  SPEED_TEST(size_t, truns, runs, +, safe_add);
-  SPEED_TEST(unsigned long long, truns, runs, +, safe_add);
-  SPEED_TEST(unsigned long, truns, runs, +, safe_add);
-  SPEED_TEST(uint64_t, truns, runs, +, safe_add);
-  SPEED_TEST(uint32_t, truns, runs, +, safe_add);
-  SPEED_TEST(uint16_t, truns, runs, +, safe_add);
-  SPEED_TEST(uint8_t, truns, runs, +, safe_add);
-  SPEED_TEST(ssize_t, truns, runs, +, safe_add);
-  SPEED_TEST(long long, truns, runs, +, safe_add);
-  SPEED_TEST(long, truns, runs, +, safe_add);
-  SPEED_TEST(int64_t, truns, runs, +, safe_add);
-  SPEED_TEST(int32_t, truns, runs, +, safe_add);
-  SPEED_TEST(int16_t, truns, runs, +, safe_add);
-  SPEED_TEST(int8_t, truns, runs, +, safe_add);
-
-  SPEED_TEST(size_t, truns, runs, -, safe_sub);
-  SPEED_TEST(unsigned long long, truns, runs, -, safe_sub);
-  SPEED_TEST(unsigned long, truns, runs, -, safe_sub);
-  SPEED_TEST(uint64_t, truns, runs, -, safe_sub);
-  SPEED_TEST(uint32_t, truns, runs, -, safe_sub);
-  SPEED_TEST(uint16_t, truns, runs, -, safe_sub);
-  SPEED_TEST(uint8_t, truns, runs, -, safe_sub);
-  SPEED_TEST(ssize_t, truns, runs, -, safe_sub);
-  SPEED_TEST(long long, truns, runs, -, safe_sub);
-  SPEED_TEST(long, truns, runs, -, safe_sub);
-  SPEED_TEST(int64_t, truns, runs, -, safe_sub);
-  SPEED_TEST(int32_t, truns, runs, -, safe_sub);
-  SPEED_TEST(int16_t, truns, runs, -, safe_sub);
-  SPEED_TEST(int8_t, truns, runs, -, safe_sub);
-
-  SPEED_TEST(size_t, truns, runs, *, safe_mul);
-  SPEED_TEST(unsigned long long, truns, runs, *, safe_mul);
-  SPEED_TEST(unsigned long, truns, runs, *, safe_mul);
-  SPEED_TEST(uint64_t, truns, runs, *, safe_mul);
-  SPEED_TEST(uint32_t, truns, runs, *, safe_mul);
-  SPEED_TEST(uint16_t, truns, runs, *, safe_mul);
-  SPEED_TEST(uint8_t, truns, runs, *, safe_mul);
-  SPEED_TEST(ssize_t, truns, runs, *, safe_mul);
-  SPEED_TEST(long long, truns, runs, *, safe_mul);
-  SPEED_TEST(long, truns, runs, *, safe_mul);
-  SPEED_TEST(int64_t, truns, runs, *, safe_mul);
-  SPEED_TEST(int32_t, truns, runs, *, safe_mul);
-  SPEED_TEST(int16_t, truns, runs, *, safe_mul);
-  SPEED_TEST(int8_t, truns, runs, *, safe_mul);
-
-  SPEED_TEST(size_t, truns, runs, /, safe_div);
-  SPEED_TEST(unsigned long long, truns, runs, /, safe_div);
-  SPEED_TEST(unsigned long, truns, runs, /, safe_div);
-  SPEED_TEST(uint64_t, truns, runs, /, safe_div);
-  SPEED_TEST(uint32_t, truns, runs, /, safe_div);
-  SPEED_TEST(uint16_t, truns, runs, /, safe_div);
-  SPEED_TEST(uint8_t, truns, runs, /, safe_div);
-  SPEED_TEST(ssize_t, truns, runs, /, safe_div);
-  SPEED_TEST(long long, truns, runs, /, safe_div);
-  SPEED_TEST(long, truns, runs, /, safe_div);
-  SPEED_TEST(int64_t, truns, runs, /, safe_div);
-  SPEED_TEST(int32_t, truns, runs, /, safe_div);
-  SPEED_TEST(int16_t, truns, runs, /, safe_div);
-  SPEED_TEST(int8_t, truns, runs, /, safe_div);
-
-  SPEED_TEST(size_t, truns, runs, %, safe_mod);
-  SPEED_TEST(unsigned long long, truns, runs, %, safe_mod);
-  SPEED_TEST(unsigned long, truns, runs, %, safe_mod);
-  SPEED_TEST(uint64_t, truns, runs, %, safe_mod);
-  SPEED_TEST(uint32_t, truns, runs, %, safe_mod);
-  SPEED_TEST(uint16_t, truns, runs, %, safe_mod);
-  SPEED_TEST(uint8_t, truns, runs, %, safe_mod);
-  SPEED_TEST(ssize_t, truns, runs, %, safe_mod);
-  SPEED_TEST(long long, truns, runs, %, safe_mod);
-  SPEED_TEST(long, truns, runs, %, safe_mod);
-  SPEED_TEST(int64_t, truns, runs, %, safe_mod);
-  SPEED_TEST(int32_t, truns, runs, %, safe_mod);
-  SPEED_TEST(int16_t, truns, runs, %, safe_mod);
-  SPEED_TEST(int8_t, truns, runs, %, safe_mod);
-
-  return r;
-}
-#endif
 
 int main(int argc, char **argv) {
   /* test inlines */
   int tests = 0, succ = 0, fail = 0;
-  tests++; if (T_shr_s8())  succ++; else fail++;
-  tests++; if (T_shr_s16()) succ++; else fail++;
-  tests++; if (T_shr_s32()) succ++; else fail++;
-  tests++; if (T_shr_s64()) succ++; else fail++;
-  tests++; if (T_shr_long()) succ++; else fail++;
-  tests++; if (T_shr_longlong()) succ++; else fail++;
-  tests++; if (T_shr_ssizet()) succ++; else fail++;
-  tests++; if (T_shr_u8())  succ++; else fail++;
-  tests++; if (T_shr_u16()) succ++; else fail++;
-  tests++; if (T_shr_u32()) succ++; else fail++;
-  tests++; if (T_shr_u64()) succ++; else fail++;
-  tests++; if (T_shr_ulong()) succ++; else fail++;
-  tests++; if (T_shr_ulonglong()) succ++; else fail++;
-  tests++; if (T_shr_sizet()) succ++; else fail++;
-
-  tests++; if (T_shl_s8())  succ++; else fail++;
-  tests++; if (T_shl_s16()) succ++; else fail++;
-  tests++; if (T_shl_s32()) succ++; else fail++;
-  tests++; if (T_shl_s64()) succ++; else fail++;
-  tests++; if (T_shl_long()) succ++; else fail++;
-  tests++; if (T_shl_longlong()) succ++; else fail++;
-  tests++; if (T_shl_ssizet()) succ++; else fail++;
-  tests++; if (T_shl_u8())  succ++; else fail++;
-  tests++; if (T_shl_u16()) succ++; else fail++;
-  tests++; if (T_shl_u32()) succ++; else fail++;
-  tests++; if (T_shl_u64()) succ++; else fail++;
-  tests++; if (T_shl_ulong()) succ++; else fail++;
-  tests++; if (T_shl_ulonglong()) succ++; else fail++;
-  tests++; if (T_shl_sizet()) succ++; else fail++;
-
   tests++; if (T_div_s8())  succ++; else fail++;
   tests++; if (T_div_s16()) succ++; else fail++;
   tests++; if (T_div_s32()) succ++; else fail++;
@@ -2270,7 +1133,6 @@ int main(int argc, char **argv) {
   tests++; if (T_mul_ulong()) succ++; else fail++;
   tests++; if (T_mul_ulonglong()) succ++; else fail++;
   tests++; if (T_mul_sizet()) succ++; else fail++;
-  tests++; if (T_mul_mixed()) succ++; else fail++;
 
   tests++; if (T_sub_s8())  succ++; else fail++;
   tests++; if (T_sub_s16()) succ++; else fail++;
@@ -2302,44 +1164,14 @@ int main(int argc, char **argv) {
   tests++; if (T_add_ulonglong()) succ++; else fail++;
   tests++; if (T_add_sizet()) succ++; else fail++;
   tests++; if (T_add_mixed()) succ++; else fail++;
-
   tests++; if (T_add_increment()) succ++; else fail++;
 
-  tests++; if (T_iopf_null()) succ++; else fail++;
-  /* tests++; if (T_iopf_self()) succ++; else fail++; */
-  tests++; if (T_iopf_add_u8u8()) succ++; else fail++;
-  tests++; if (T_iopf_add_u16u16()) succ++; else fail++;
-  tests++; if (T_iopf_add_u32u32()) succ++; else fail++;
-  tests++; if (T_iopf_add_u64u64()) succ++; else fail++;
-  tests++; if (T_iopf_add_s8s8()) succ++; else fail++;
-  tests++; if (T_iopf_add_s16s16()) succ++; else fail++;
-  tests++; if (T_iopf_add_s32s32()) succ++; else fail++;
-  tests++; if (T_iopf_add_s64s64()) succ++; else fail++;
-
-  tests++; if (T_iopf_mul_u8u8()) succ++; else fail++;
-  tests++; if (T_iopf_mul_u16u16()) succ++; else fail++;
-  tests++; if (T_iopf_mul_u32u32()) succ++; else fail++;
-  tests++; if (T_iopf_mul_u64u64()) succ++; else fail++;
-  tests++; if (T_iopf_mul_s8s8()) succ++; else fail++;
-  tests++; if (T_iopf_mul_s16s16()) succ++; else fail++;
-  tests++; if (T_iopf_mul_s32s32()) succ++; else fail++;
-  tests++; if (T_iopf_mul_s64s64()) succ++; else fail++;
-
-
-
-
-
   tests++; if (T_magic_constants()) succ++; else fail++;
-
 
   printf("%d/%d expects succeeded (%d failures)\n",
          expect_succ, expect, expect_fail);
   printf("%d/%d tests succeeded (%d failures)\n", succ, tests, fail);
-  /* Currently, this requires a quiescent system to be even approximately useful.
-   * TODO: use better timing functions */
-#ifdef SAFE_IOP_SPEED_TEST
-  T_speed();
-#endif
+  /* TODO: Add tests for safe_iopf when upgraded */
   return fail;
 }
 #endif

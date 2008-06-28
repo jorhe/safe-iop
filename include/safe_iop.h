@@ -1,23 +1,23 @@
 /* safe_iop
- * License:: BSD
+ * License:: released in to the public domain
  * Author:: Will Drewry <redpig@dataspill.org>
+ * Copyright 2007,2008 redpig@dataspill.org
+ * Some portions copyright Google Inc, 2008.
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS
+ * OF ANY KIND, either express or implied.
  * 
  * To Do:
- * - Optimize safe type casting to perform minimal operations
  * - Add varargs style interface for safe_<op>()
+ * - Add support for safe conversion
+ * - Add additional sizes to safe_iopf (currently 32-bit only)
+ *   (this will make use of the safe conversion above)
+ * - Add left shift support
  * - Add more test cases for interfaces (op_mixed)
  * - Add more tests for edge cases I've missed? and for thoroughness
  *
  * History:
- * = 0.4
- * - [BUG] Fixed signed addition. Two negatives were failing!
- * - Added two negative tests to add T_add_*()s
- * - Extended safe_iopf to support more types. Still needs more testing.
- * - Added more mixed interface tests
- * - Added safe type casting (automagically)
- * - Added basic speed tests (not accurate at all yet)
- * - Added safe_inc/safe_dec
- * - Licensed all subsequent work BSD for clarity of code ownership
  * = 0.3
  * - solidified code into a smaller number of macros and functions
  * - added typeless functions using gcc magic (typeof)
@@ -40,21 +40,6 @@
  * Contributors & thanks:
  * - peter@valchev.net for his review, comments, and enthusiasm
  * - thanks to Google for contributing some time
- *
- * Copyright (c) 2007,2008 Will Drewry <redpig@dataspill.org>
- * Some portions contributed by Google Inc., 2008.
- *
- * Permission to use, copy, modify, and distribute this software for any
- * purpose with or without fee is hereby granted, provided that the above
- * copyright notice and this permission notice appear in all copies.
- *
- * THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES
- * WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF
- * MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR
- * ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES
- * WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN
- * ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
- * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  */
 
 /* This library supplies a set of standard functions for performing and
@@ -74,14 +59,8 @@
 #include <limits.h>  /* for CHAR_BIT */
 #include <assert.h>  /* for type enforcement */
 
-typedef enum { SAFE_IOP_TYPE_U8 = 1,
-               SAFE_IOP_TYPE_S8,
-               SAFE_IOP_TYPE_U16,
-               SAFE_IOP_TYPE_S16,
+typedef enum { SAFE_IOP_TYPE_S32 = 1,
                SAFE_IOP_TYPE_U32,
-               SAFE_IOP_TYPE_S32,
-               SAFE_IOP_TYPE_U64,
-               SAFE_IOP_TYPE_S64,
                SAFE_IOP_TYPE_DEFAULT = SAFE_IOP_TYPE_S32,
                } safe_type_t;
 
@@ -103,80 +82,13 @@ typedef enum { SAFE_IOP_TYPE_U8 = 1,
   ((typeof(_a))(-__sio(m)(smax)(_a) - 1))
 #define OPAQUE_SAFE_IOP_PREFIX_MACRO_umax(_a) ((typeof(_a))(~((typeof(_a)) 0)))
 
-
-#define OPAQUE_SAFE_IOP_PREFIX_MACRO_is_signed(__sA) \
-  (__sio(m)(smin)(__sA) <= ((typeof(__sA))0))
-
 #define OPAQUE_SAFE_IOP_PREFIX_MACRO_type_enforce(__A, __B) \
-  ((__sio(m)(is_signed)(__A) == __sio(m)(is_signed)(__B)) && \
-   (sizeof(typeof(__A)) == sizeof(typeof(__B))))
+  ((((__sio(m)(smin)(__A) <= ((typeof(__A))0)) && \
+     (__sio(m)(smin)(__B) <= ((typeof(__B))0))) || \
+   (((__sio(m)(smin)(__A) > ((typeof(__A))0))) && \
+     (__sio(m)(smin)(__B) > ((typeof(__B))0)))) && \
+   (sizeof(typeof(__A)) == sizeof(typeof(__B)))) 
 
-/* Casts B to A if possible. Only call if type_enforce fails. */
-/* XXX: Optimize scOk assignment to minimize use */
-#define OPAQUE_SAFE_IOP_PREFIX_MACRO_safe_cast(__DST, __A, __B)  ({ \
-  int __sio(var)(__scOk) = 0; \
-  if (sizeof(typeof(__A)) == sizeof(typeof(__B))) { \
-    /* sign change */ \
-    if (!__sio(m)(is_signed)(__A) && !__sio(m)(is_signed)(__B)) { \
-        __sio(var)(__scOk) = 1; \
-    } else if (__sio(m)(is_signed)(__A) && __sio(m)(is_signed)(__B)) { \
-        __sio(var)(__scOk) = 1; \
-    } else if (!__sio(m)(is_signed)(__A) && __sio(m)(is_signed)(__B)) { \
-      if ((__B) > (typeof(__B))0 || (__B) == (typeof(__B))0) \
-        __sio(var)(__scOk) = 1; \
-    } else if (__sio(m)(is_signed)(__A) && !__sio(m)(is_signed)(__B)) { \
-      /* since they are the same size, the comparison cast should be safe */ \
-      if ((__B) < (typeof(__B))__sio(m)(smax)(__A) || \
-          (__B) == (typeof(__B))__sio(m)(smax)(__A)) \
-        __sio(var)(__scOk) = 1; \
-    } \
-  } else if (sizeof(typeof(__A)) > sizeof(typeof(__B))) { \
-    /* cast up: this allows -1, e.g., which means extension. */ \
-    /* Is that _really_ safe ? */ \
-    if (!__sio(m)(is_signed)(__A) && !__sio(m)(is_signed)(__B)) { \
-        __sio(var)(__scOk) = 1; \
-    } else if (__sio(m)(is_signed)(__A) && __sio(m)(is_signed)(__B)) { \
-        __sio(var)(__scOk) = 1; \
-    } else if (!__sio(m)(is_signed)(__A) && __sio(m)(is_signed)(__B)) { \
-      if ((__B) == (typeof(__B))0 || (__B) > (typeof(__B))0) \
-        __sio(var)(__scOk) = 1; \
-    } else if (__sio(m)(is_signed)(__A) && !__sio(m)(is_signed)(__B)) { \
-      /* this is true by default */ \
-      if (__sio(m)(smax)(__A) >= __sio(m)(umax)(__B)) \
-        __sio(var)(__scOk) = 1; \
-      /* This will safely truncate given that smax(a) <= umax(b) */ \
-      else if ((__B) < (typeof(__B))__sio(m)(smax)(__A) || \
-          (__B) == (typeof(__B))__sio(m)(smax)(__A)) \
-        __sio(var)(__scOk) = 1; \
-    } \
-  } else if (sizeof(typeof(__A)) < sizeof(typeof(__B))) { \
-    /* cast down (loss of precision) */ \
-    if (!__sio(m)(is_signed)(__A) && !__sio(m)(is_signed)(__B)) { \
-      if ((__B) == (typeof(__B))__sio(m)(umax)(__A)) \
-        __sio(var)(__scOk) = 1; \
-      if ((__B) < (typeof(__B))__sio(m)(umax)(__A)) \
-        __sio(var)(__scOk) = 1; \
-    } else if (__sio(m)(is_signed)(__A) && __sio(m)(is_signed)(__B)) { \
-      if (((__B) > (typeof(__B))__sio(m)(smin)(__A) || \
-           (__B) == (typeof(__B))__sio(m)(smin)(__A)) && \
-          ((__B) < (typeof(__B))__sio(m)(smax)(__A) || \
-           (__B) == (typeof(__B))__sio(m)(smax)(__A))) \
-        __sio(var)(__scOk) = 1; \
-    } else if (!__sio(m)(is_signed)(__A) && __sio(m)(is_signed)(__B)) { \
-      /* this should safely extend */ \
-      if (((__B) > (typeof(__B))0 || (__B) == (typeof(__B))0) && \
-          (((__B) < (typeof(__B))__sio(m)(umax)(__A)) || \
-           ((__B) == (typeof(__B))__sio(m)(umax)(__A)))) \
-        __sio(var)(__scOk) = 1; \
-    } else if (__sio(m)(is_signed)(__A) && !__sio(m)(is_signed)(__B)) { \
-      /* this should safely extend */ \
-      if ((__B) < (typeof(__B))__sio(m)(smax)(__A) || \
-          (__B) == (typeof(__B))__sio(m)(smax)(__A)) \
-        __sio(var)(__scOk) = 1; \
-    } \
-  } \
-  __sio(var)(__scOk); \
-})
 
 /* We use a non-void wrapper for assert(). This allows us to factor it away on
  * -DNDEBUG but still have conditionals test the result (and optionally return
@@ -193,14 +105,12 @@ typedef enum { SAFE_IOP_TYPE_U8 = 1,
 /* type checking is compiled out if NDEBUG supplied. */
 #define safe_add(_ptr, __a, __b) \
  ({ int __sio(var)(ok) = 0; \
-    typeof(__a) __sio(var)(_a) = (__a), __sio(var)(_b); \
+    typeof(__a) __sio(var)(_a) = (__a); \
+    typeof(__b) __sio(var)(_b) = (__b); \
     typeof(_ptr) __sio(var)(p) = (_ptr); \
-    if (__sio(m)(type_enforce)(__sio(var)(_a), (__b)) || \
-        __sio(m)(assert)(__sio(m)(safe_cast)(__sio(var)(_b), \
-                                             __sio(var)(_a), \
-                                             (__b)))) { \
-      __sio(var)(_b) = (typeof(__a))(__b); \
-      if (__sio(m)(is_signed)(__sio(var)(_a))) { \
+    if (__sio(m)(assert)(__sio(m)(type_enforce)(__sio(var)(_a), \
+                                                __sio(var)(_b)))) { \
+      if (__sio(m)(smin)(__sio(var)(_a)) <= ((typeof(__sio(var)(_a)))0)) { \
         __sio(var)(ok) = safe_sadd(__sio(var)(p), \
                                    __sio(var)(_a), \
                                    __sio(var)(_b)); \
@@ -211,20 +121,6 @@ typedef enum { SAFE_IOP_TYPE_U8 = 1,
       } \
     } \
     __sio(var)(ok); })
-
-#define safe_inc(_pA) ({ \
-  typeof(_pA) __sio(var)(pA) = (_pA); \
-  safe_add(__sio(var)(pA), *(__sio(var)(pA)), \
-           ((typeof(*(__sio(var)(pA))))1)); \
-})
-
-#if 0
-#define safe_inc(_A) ({ \
-  safe_add(&__sio(var)(pA), __sio(var)(pA), 1); \
-})
-#endif
-
-
 
 #define safe_add3(_ptr, _A, _B, _C) \
 ({ typeof(_A) __sio(var)(a) = (_A); \
@@ -261,12 +157,9 @@ typedef enum { SAFE_IOP_TYPE_U8 = 1,
     typeof(__a) __sio(var)(_a) = (__a); \
     typeof(__b) __sio(var)(_b) = (__b); \
     typeof(_ptr) __sio(var)(p) = (_ptr); \
-    if (__sio(m)(type_enforce)(__sio(var)(_a), (__b)) || \
-        __sio(m)(assert)(__sio(m)(safe_cast)(__sio(var)(_b), \
-                                             __sio(var)(_a), \
-                                             (__b)))) { \
-      __sio(var)(_b) = (typeof(__a))(__b); \
-      if (__sio(m)(is_signed)(__sio(var)(_a))) { \
+    if (__sio(m)(assert)(__sio(m)(type_enforce)(__sio(var)(_a), \
+                                                __sio(var)(_b)))) { \
+      if (__sio(m)(umax)(__sio(var)(_a)) <= ((typeof(__sio(var)(_a)))0)) { \
         __sio(var)(ok) = safe_ssub(__sio(var)(p), \
                                    __sio(var)(_a), \
                                    __sio(var)(_b)); \
@@ -278,11 +171,6 @@ typedef enum { SAFE_IOP_TYPE_U8 = 1,
     } \
     __sio(var)(ok); })
 
-#define safe_dec(_pA) ({ \
-  typeof(_pA) __sio(var)(pA) = (_pA); \
-  safe_sub(__sio(var)(pA), *__sio(var)(pA), \
-           ((typeof(*(__sio(var)(pA))))1)); \
-})
 /* These are sequentially performed */
 #define safe_sub3(_ptr, _A, _B, _C) \
 ({ typeof(_A) __sio(var)(a) = (_A); \
@@ -321,12 +209,9 @@ typedef enum { SAFE_IOP_TYPE_U8 = 1,
     typeof(__a) __sio(var)(_a) = (__a); \
     typeof(__b) __sio(var)(_b) = (__b); \
     typeof(_ptr) __sio(var)(p) = (_ptr); \
-    if (__sio(m)(type_enforce)(__sio(var)(_a), (__b)) || \
-        __sio(m)(assert)(__sio(m)(safe_cast)(__sio(var)(_b), \
-                                             __sio(var)(_a), \
-                                             (__b)))) { \
-      __sio(var)(_b) = (typeof(__a))(__b); \
-      if (__sio(m)(is_signed)(__sio(var)(_a))) { \
+    if (__sio(m)(assert)(__sio(m)(type_enforce)(__sio(var)(_a), \
+                                                __sio(var)(_b)))) { \
+      if (__sio(m)(umax)(__sio(var)(_a)) <= ((typeof(__sio(var)(_a)))0)) { \
         __sio(var)(ok) = safe_smul(__sio(var)(p), \
                                    __sio(var)(_a), \
                                    __sio(var)(_b)); \
@@ -373,12 +258,9 @@ typedef enum { SAFE_IOP_TYPE_U8 = 1,
     typeof(__a) __sio(var)(_a) = (__a); \
     typeof(__b) __sio(var)(_b) = (__b); \
     typeof(_ptr) __sio(var)(p) = (_ptr); \
-    if (__sio(m)(type_enforce)(__sio(var)(_a), (__b)) || \
-        __sio(m)(assert)(__sio(m)(safe_cast)(__sio(var)(_b), \
-                                             __sio(var)(_a), \
-                                             (__b)))) { \
-      __sio(var)(_b) = (typeof(__a))(__b); \
-      if (__sio(m)(is_signed)(__sio(var)(_a))) { \
+    if (__sio(m)(assert)(__sio(m)(type_enforce)(__sio(var)(_a), \
+                                                __sio(var)(_b)))) { \
+      if (__sio(m)(umax)(__sio(var)(_a)) <= ((typeof(__sio(var)(_a)))0)) { \
         __sio(var)(ok) = safe_sdiv(__sio(var)(p), \
                                    __sio(var)(_a), \
                                    __sio(var)(_b)); \
@@ -425,12 +307,9 @@ typedef enum { SAFE_IOP_TYPE_U8 = 1,
     typeof(__a) __sio(var)(_a) = (__a); \
     typeof(__b) __sio(var)(_b) = (__b); \
     typeof(_ptr) __sio(var)(p) = (_ptr); \
-    if (__sio(m)(type_enforce)(__sio(var)(_a), (__b)) || \
-        __sio(m)(assert)(__sio(m)(safe_cast)(__sio(var)(_b), \
-                                             __sio(var)(_a), \
-                                             (__b)))) { \
-      __sio(var)(_b) = (typeof(__a))(__b); \
-      if (__sio(m)(is_signed)(__sio(var)(_a))) { \
+    if (__sio(m)(assert)(__sio(m)(type_enforce)(__sio(var)(_a), \
+                                                __sio(var)(_b)))) { \
+      if (__sio(m)(umax)(__sio(var)(_a)) <= ((typeof(__sio(var)(_a)))0)) { \
         __sio(var)(ok) = safe_smod(__sio(var)(p), \
                                    __sio(var)(_a), \
                                    __sio(var)(_b)); \
@@ -471,55 +350,6 @@ typedef enum { SAFE_IOP_TYPE_U8 = 1,
     safe_mod(&(__sio(var)(r)), __sio(var)(r), __sio(var)(c)) && \
     safe_mod(&(__sio(var)(r)), __sio(var)(r), __sio(var)(d)) && \
     safe_mod((_ptr), __sio(var)(r), __sio(var)(e))); })
-
-/* XXX: does it matter if __a and __b are the same type?
- *      signedness is useful to have incommon.
- */
-#define safe_shl(_ptr, __a, __b) \
- ({ int __sio(var)(ok) = 0; \
-    typeof(__a) __sio(var)(_a) = (__a), __sio(var)(_b); \
-    typeof(_ptr) __sio(var)(p) = (_ptr); \
-    if (__sio(m)(type_enforce)(__sio(var)(_a), (__b)) || \
-        __sio(m)(assert)(__sio(m)(safe_cast)(__sio(var)(_b), \
-                                             __sio(var)(_a), \
-                                             (__b)))) { \
-      __sio(var)(_b) = (typeof(__a))(__b); \
-      if (__sio(m)(is_signed)(__sio(var)(_a))) { \
-        __sio(var)(ok) = safe_sshl(__sio(var)(p), \
-                                      __sio(var)(_a), \
-                                      __sio(var)(_b)); \
-      } else { \
-        __sio(var)(ok) = safe_ushl(__sio(var)(p), \
-                                     __sio(var)(_a), \
-                                     __sio(var)(_b)); \
-      } \
-    } \
-    __sio(var)(ok); })
-
-#define safe_shr(_ptr, __a, __b) \
- ({ int __sio(var)(ok) = 0; \
-    typeof(__a) __sio(var)(_a) = (__a), __sio(var)(_b); \
-    typeof(_ptr) __sio(var)(p) = (_ptr); \
-    if (__sio(m)(type_enforce)(__sio(var)(_a), (__b)) || \
-        __sio(m)(assert)(__sio(m)(safe_cast)(__sio(var)(_b), \
-                                             __sio(var)(_a), \
-                                             (__b)))) { \
-      __sio(var)(_b) = (typeof(__a))(__b); \
-      if (__sio(m)(is_signed)(__sio(var)(_a))) { \
-        __sio(var)(ok) = safe_sshr(__sio(var)(p), \
-                                      __sio(var)(_a), \
-                                      __sio(var)(_b)); \
-      } else { \
-        __sio(var)(ok) = safe_ushr(__sio(var)(p), \
-                                     __sio(var)(_a), \
-                                     __sio(var)(_b)); \
-      } \
-    } \
-    __sio(var)(ok); })
-
-
-
-
 
 /*** Safe integer operation implementation macros ***/
 
@@ -630,53 +460,10 @@ typedef enum { SAFE_IOP_TYPE_U8 = 1,
     } \
     __sio(var)(ok); })
 
-#define safe_sshl(_ptr, _a, _b) \
- ({ int __sio(var)(ok) = 1; \
-    if (!((_a) > 0 || (_a) == 0) || \
-        !((_b) > 0 || (_b) == 0) || \
-        ((_b) >= sizeof(typeof(_a))*CHAR_BIT) || \
-        ((_a) > (__sio(m)(smax)(_a) >> (_b)))) \
-      __sio(var)(ok) = 0; \
-    else \
-      if ((_ptr)) { *((typeof(_a)*)(_ptr)) = (_a) << (_b); } \
-    __sio(var)(ok); })
-
-#define safe_ushl(_ptr, _a, _b) \
- ({ int __sio(var)(ok) = 1; \
-    if (((_b) >= sizeof(typeof(_a))*CHAR_BIT) || \
-        ((_a) > (__sio(m)(umax)(_a) >> (_b)))) \
-      __sio(var)(ok) = 0; \
-    else \
-      if ((_ptr)) { *((typeof(_a)*)(_ptr)) = (_a) << (_b); } \
-    __sio(var)(ok); })
-
-/* XXX: CERT doesnt recommend failing on -a, but it is undefined */
-#define safe_sshr(_ptr, _a, _b) \
- ({ int __sio(var)(ok) = 1; \
-    if (!((_a) > 0 || (_a) == 0) || \
-        !((_b) > 0 || (_b) == 0) || \
-        ((_b) >= sizeof(typeof(_a))*CHAR_BIT)) \
-      __sio(var)(ok) = 0; \
-    else \
-      if ((_ptr)) { *((typeof(_a)*)(_ptr)) = (_a) >> (_b); } \
-    __sio(var)(ok); })
-
-/* this doesn't whine if 0 >> n. */
-#define safe_ushr(_ptr, _a, _b) \
- ({ int __sio(var)(ok) = 1; \
-    if ((_b) >= (sizeof(typeof(_a))*CHAR_BIT)) \
-      __sio(var)(ok) = 0; \
-    else \
-      if ((_ptr)) { *((typeof(_a)*)(_ptr)) = (_a) >> (_b); } \
-    __sio(var)(ok); })
-
-
-
 #if SAFE_IOP_COMPAT
-/* This is for compatibility with pre-0.3 versions.
- * Do not enable unless you _have_ to.
- */
+/* These are used for testing for easy type enforcement */
 #include <sys/types.h>
+#include <limits.h>
 
 #ifndef SAFE_IOP_INLINE
 #  if defined(__GNUC__) && (__GNUC__ > 3 || __GNUC__ == 3 &&  __GNUC_MINOR__ > 0)
